@@ -21,6 +21,7 @@
   - [4.3 Static Post Renderer (Playwright)](#43-static-post-renderer-playwright)
   - [4.4 Short-Form Video Renderer (Remotion)](#44-short-form-video-renderer-remotion)
   - [4.5 Audio & Asset Supply Pipeline](#45-audio--asset-supply-pipeline)
+  - [4.6 Feature Toggles & API Guardrails Engine](#46-feature-toggles--api-guardrails-engine)
 - [5. Testing Strategy (TDD Framework)](#5-testing-strategy-tdd-framework)
 - [6. CI/CD & Code Quality Pipeline](#6-cicd--code-quality-pipeline)
 - [Appendix A: End-to-End Sequence & Interfaces](#appendix-a-end-to-end-sequence--interfaces)
@@ -421,10 +422,39 @@ Rules (normative): L1–L3 are pure data hydration — no LLM at render time, de
 
 **Goal (PRD FR-3):** 1080×1920 MP4 with synchronized VO + word-by-word kinetic typography, no video editor.
 
-- `remotion/` shell: `ReelComposition` fixed at `1080×1920, 30fps`; props `{script, scenes[], audioSrc, words[], brandTokens}`; themes imported dynamically from `/templates/reels/<themeId>`; per-scene B-roll (Pexels image/video w/ Ken Burns), crossfades, 0–3s hook card + CTA end card + progress bar.
+- `remotion/` shell: size-parametric compositions (1080×1920@30fps default; also 1080×1350, 1080×1080 per §4.4.2); props `{script, scenes, audioSrc, words, brandTokens, preset, canvas}`; preset components imported dynamically from `/templates/reels/<preset>`; per-scene B-roll (multi-source §4.5) with Ken Burns, crossfades, 0–3s hook card + CTA end card + progress bar (preset-dependent).
+### 4.4 Short-Form Video Renderer (Remotion)
+
+**Goal (PRD FR-3):** 1080×1920 MP4 with synchronized VO + word-by-word kinetic typography, no video editor.
+
+- `render_video/renderer.py` (`VideoReelRenderer`, M3): accepts `{blueprint, preset, flags, platform}`; resolves platform canvases (§4.4.2), enforces guardrails (§4.6), builds Remotion input props `{script, scenes, audioSrc, words, brandTokens, preset, canvas}`, shells `npx remotion render`, asserts MP4 (resolution, duration ±0.5s of VO, `ffprobe` audio track), writes `meta.json`.
 - Caption engine (`remotion/src/captioning/`): Faster-Whisper `words[]` → karaoke active-word highlight, `maxWordsPerLine` pagination, safe-area (default 220px) + stroke/shadow for contrast; drift <150ms vs fixture.
-- Audio: Kokoro VO laid precisely; optional ducked background (local file, default off); SHOULD normalize −14 LUFS.
-- CLI: `render-reel --blueprint ... --voice ... --words ...` → `reel-1080x1920.mp4` via `npx remotion render` with progress logs + resumable intermediates; asserts: resolution, duration ±0.5s of VO, `ffprobe` audio-track presence; missing B-roll → gradient fallback (logged, PRD AC-3).
+
+#### 4.4.1 Video Style Presets (M3)
+
+Three preset components under `templates/reels/<preset>/` (`ReelComposition.tsx` + `theme.ts` + `preview.png` + `meta.json {themeId, sizes, version}`), selected via `--preset`:
+
+| Preset | Style | Signature |
+|--------|-------|-----------|
+| `alex-hormozi` | Fast kinetic typography | Word-by-word yellow/green highlight, punchy pop animations, progress bar |
+| `faceless-docu` | Cinematic documentary | Dark gradient overlay, elegant serif typography, slow-zoom (Ken Burns) B-roll |
+| `b-roll-centric` | Visual-first | Content-matching full-bleed background layers, clean bottom-aligned subtitles |
+
+**Hybrid Prompt Customization:** `blueprint.style.presetTweaks` (e.g. `{highlight: "green", pace: "calm"}`) may adjust preset tokens (colors, pacing, caption position) within guardrails — tweaks never change composition geometry, audio routing, or canvas sizes. Unknown tweak keys are ignored with a warning.
+
+#### 4.4.2 Multi-Platform Aspect Ratios (M3)
+
+`--platform` selects canvases; `all` renders every size in one command:
+
+| Flag | Canvases | Use |
+|------|----------|-----|
+| `--platform fb` | 1080×1080 (1:1) + 1080×1920 (9:16) | Facebook Feed + Reels |
+| `--platform ig` | 1080×1350 (4:5) + 1080×1920 (9:16) | Instagram Feed + Reels |
+| `--platform all` | 1080×1080 + 1080×1350 + 1080×1920 | Both feeds + Reels simultaneously |
+
+Preset components are size-parametric (`width`/`height` props); caption safe-areas scale per canvas. Per-canvas outputs + asserts land in `out/<run-id>/<canvas>/`.
+- Audio: Kokoro VO laid precisely; BGM auto-ducked (see §4.5); SHOULD normalize −14 LUFS.
+- CLI: `pulsecraft render reel --blueprint ... --preset alex-hormozi --platform all --brand acme --out out/<run-id>` → per-canvas MP4s via `npx remotion render` with progress logs + resumable intermediates; asserts: resolution, duration ±0.5s of VO, `ffprobe` audio-track presence; missing B-roll → gradient fallback (logged, PRD AC-3).
 - Perf (PRD NFR-2.2): 30s Reel in 1–3 min warm on ref hardware; 60s SHOULD <5min; single-job default; `--fast-draft` (tiny whisper, reduced scale) for iteration; 3s render-smoke in CI (PRD R5).
 
 ### 4.5 Audio & Asset Supply Pipeline
@@ -434,7 +464,17 @@ Rules (normative): L1–L3 are pure data hydration — no LLM at render time, de
 1. **Kokoro TTS → VO:** sentence-aware chunking (≤~500 chars), per-brand voice+speed, concat WAV (≥16kHz), cache key `hash(text+voice+speed)` at `.cache/tts/`; offline after install; `--reuse-cache` default on, `--refresh-assets` to force.
 2. **Faster-Whisper INT8 → timestamps:** `base` default (`--whisper-model` override; `--fast-draft` → `tiny`), CPU INT8; emits `words.json {words:[{word,start,end}], model, estimated}` + `.srt`; `--no-whisper` fallback = uniform timing flagged `estimated:true`; fixture bar ≥95% coverage + monotonic.
 3. **Pexels → visuals:** `PEXELS_API_KEY` via `.env`; blueprint query + orientation filter (portrait preferred for reels), download + resize/compress to `.cache/pexels/<query-hash>/`; `assets/manifest.json {photographer, url, license}` + per-run `ATTRIBUTION.md`; failure path: backoff retry → relaxed query → cache reuse → `assets/fallback/` → continue (hard fail only with `--strict-assets`).
+4. **SFX/BGM + auto-ducking (M3):** CC0 SFX from Freesound API (`FREESOUND_API_KEY`) and BGM from Pixabay Audio API (`PIXABAY_API_KEY`), keyed by blueprint `audioTags[]`; ducking curve — BGM at **15%** under speech, **35%** during pauses (200ms attack/release smoothing); mixed track cached at `.cache/audio/mix-<hash>.wav`. Disabled → stage skipped (see §4.6).
+5. **Multi-source B-roll + local overrides (M3):** providers tried in order Pexels → Pixabay (`PIXABAY_API_KEY`) → Openverse (no key), first hit wins per scene; `[Visual: my-product.png]` script tags load verbatim from `input/visuals/` (path-traversal guarded, missing file = warning + provider fallback).
 - Airplane-mode re-run (post-first-cache) MUST succeed for TTS+Whisper (PRD AC-1); Pexels 429/5xx simulation MUST still render via fallback (PRD AC-2).
+
+### 4.6 Feature Toggles & API Guardrails Engine (M3)
+
+**Rule (normative): system toggles strictly override LLM prompts.** If a feature/API is disabled, blueprint or prompt requests for it are ignored — with a logged warning — never executed.
+
+- `config/features.json` (versioned `features/v1`): `{tts: {kokoro, edgeFallback}, stt: {whisper}, audio: {sfx, bgm, ducking}, media: {pexels, pixabay, openverse, localOverrides}, render: {remotion, dynamicL4}}`, each `{enabled: bool}`; CLI flags (`--no-bgm`, `--no-sfx`, `--no-ducking`, `--feature key=value`) override file values for the run only.
+- `common/feature_flags.py`: `FeatureFlags.load()` + `from_cli(overrides)`; `enabled("audio.bgm")`; `guard(feature, requested) -> bool` (= enabled AND requested); `enforce(blueprint) -> (blueprint, warnings)` strips disabled requests (e.g. `audioTags` dropped when SFX/BGM off, `layout` forced L3-only when `render.dynamicL4` off).
+- Cost/key guardrails: providers without configured keys are auto-treated as disabled (warning, no crash); `--strict-assets` re-escalates to hard fail.
 
 ---
 

@@ -94,6 +94,75 @@ def render_post(blueprint: str, brand: str, out: str, layout: str | None) -> Non
         click.echo(f"warning: {warning}")
 
 
+@render_group.command(name="reel")
+@click.option("--blueprint", required=True, help="Path to a reel blueprint JSON file.")
+@click.option("--brand", default="acme", show_default=True)
+@click.option(
+    "--preset",
+    default="alex-hormozi",
+    show_default=True,
+    help="Style preset: alex-hormozi|faceless-docu|b-roll-centric|kinetic-bold.",
+)
+@click.option(
+    "--platform",
+    default="all",
+    show_default=True,
+    help="Target platform: fb (1080x1080+1080x1920)|ig (1080x1350+1080x1920)|all.",
+)
+@click.option("--out", default="out", show_default=True, help="Output directory for MP4s + meta.")
+@click.option("--no-bgm", is_flag=True, default=False, help="Disable BGM bed (toggle override).")
+@click.option("--no-sfx", is_flag=True, default=False, help="Disable SFX fetch (toggle override).")
+@click.option("--no-ducking", is_flag=True, default=False, help="Disable auto-ducking (flat bed).")
+@click.option(
+    "--feature",
+    "features",
+    multiple=True,
+    help="Extra toggle override key=value (repeatable).",
+)
+def render_reel(
+    blueprint: str,
+    brand: str,
+    preset: str,
+    platform: str,
+    out: str,
+    no_bgm: bool,
+    no_sfx: bool,
+    no_ducking: bool,
+    features: tuple[str, ...],
+) -> None:
+    """Render a reel blueprint to platform MP4s (toggles override prompts)."""
+    import json
+    from pathlib import Path
+
+    from pulsecraft.common.feature_flags import FeatureFlags
+    from pulsecraft.render_video.renderer import VideoReelRenderer, VideoRenderError
+
+    overrides: dict[str, bool] = {}
+    if no_bgm:
+        overrides["audio.bgm"] = False
+    if no_sfx:
+        overrides["audio.sfx"] = False
+    if no_ducking:
+        overrides["audio.ducking"] = False
+    for item in features:
+        key, _, raw = item.partition("=")
+        overrides[key.strip()] = raw.strip().lower() not in ("0", "false", "no", "off")
+    data = json.loads(Path(blueprint).read_text(encoding="utf-8"))
+    try:
+        flags = FeatureFlags.from_cli(overrides)
+        result = VideoReelRenderer(flags=flags).render_reel(
+            data, brand=brand, preset=preset, platform=platform, out_dir=out
+        )
+    except (VideoRenderError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"preset: {result.preset} platform: {result.platform}")
+    for canvas_id, path in result.files.items():
+        click.echo(f"{canvas_id}: {path}")
+    click.echo(f"meta: {result.meta_path}")
+    for warning in result.warnings:
+        click.echo(f"warning: {warning}")
+
+
 @main.group(name="templates")
 def templates_group() -> None:
     """Inspect and manage decoupled code templates."""

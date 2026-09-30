@@ -79,10 +79,11 @@ Milestones are **acceptance-gated**: a milestone is done only when all mapped ep
 |---|-------------|-----------|
 | M3.1 | Kokoro TTS wrapper (sentence-aware ≤500-char chunks, brand voice+speed, ≥16kHz concat WAV, `hash(text+voice+speed)` cache) | Airplane-mode re-run succeeds from cache |
 | M3.2 | Faster-Whisper INT8 (`base` default, `--whisper-model` override, `--fast-draft`→`tiny`, `--no-whisper` uniform fallback `estimated:true`) → `words.json` + `.srt` | Fixture ≥95% coverage, monotonic, drift <150ms |
-| M3.3 | Remotion `ReelComposition` (1080×1920@30fps, `{script,scenes,audioSrc,words,brandTokens}`) + caption engine (karaoke, `maxWordsPerLine`, safe-area 220px) + hook/CTA cards + Ken Burns B-roll | 3s fixture smoke renders with audible VO + visible highlight |
+| M3.3 | Remotion `ReelComposition` (size-parametric 1080×1920/1350/1080 @30fps, `{script,scenes,audioSrc,words,brandTokens,preset,canvas}`) + caption engine (karaoke, `maxWordsPerLine`, safe-area 220px) + hook/CTA cards + Ken Burns B-roll | 3s fixture smoke renders with audible VO + visible highlight |
 | M3.4 | Post-render asserts (resolution, duration ±0.5s of VO, `ffprobe` audio track) + `--fast-draft` mode | 30s Reel in 1–3 min warm on ref hw; missing B-roll falls back to gradient with log |
+| M3.5 | Style presets (`alex-hormozi`, `faceless-docu`, `b-roll-centric` + hybrid `presetTweaks`) + `--platform fb\|ig\|all` canvases + SFX/BGM auto-ducking (15% speech / 35% pause) + guardrailed `render reel` CLI | `--preset` switches signature styles; `--platform all` emits 1080² + 1080×1350 + 1080×1920; disabled toggles strip requests with warnings |
 
-**Exit demo:** `render-reel` on 30s fixture → 1080×1920 MP4 + probe report; frame sample shows active-word highlight.
+**Exit demo:** `render reel` on 30s fixture → per-platform MP4s + probe report; frame sample shows active-word highlight.
 
 ### M4: Free Asset Supply Pipeline Integration (Pexels API & Decoupled /templates)
 
@@ -91,7 +92,7 @@ Milestones are **acceptance-gated**: a milestone is done only when all mapped ep
 
 | # | Deliverable | Done when |
 |---|-------------|-----------|
-| M4.1 | Pexels fetcher (`PEXELS_API_KEY` via `.env`, orientation filter, resize/compress, `.cache/pexels/<query-hash>/`, `assets/manifest.json` + per-run `ATTRIBUTION.md`) | Manifest records photographer/URL/license for every asset |
+| M4.1 | Multi-source fetcher (Pexels → Pixabay → Openverse order, `PEXELS_API_KEY`/`PIXABAY_API_KEY` via `.env`, Openverse keyless; orientation filter, resize/compress, `.cache/<provider>/<query-hash>/`, `assets/manifest.json` + per-run `ATTRIBUTION.md`) + local overrides (`[Visual: file]` → `input/visuals/`, traversal-guarded) | Manifest records photographer/URL/license for every asset; local tag bypasses network |
 | M4.2 | Failure tree (backoff retry → relaxed query → cache reuse → `assets/fallback/` → continue; hard fail only `--strict-assets`) + LRU eviction >5GB + `--reuse-cache`/`--refresh-assets` | Simulated 429/5xx still renders via fallback with warning |
 | M4.3 | Template manager GA (`templates add/modify/clear/list/preview` for `posts` + `reels`; offline-safety lint: no remote CDN, bundled fonts) | Add→preview→clear round-trip without engine diff; `templates/reels` theme hot-swappable |
 
@@ -249,8 +250,12 @@ Format: **Given-When-Then + explicit acceptance criteria (AC) + mapped epic/feat
 - AC: (1) Fixture ≥95% words covered; (2) drift <150ms; (3) `--no-whisper` yields `estimated:true` uniform timing + flag in manifest. *→ E4-F2. Covers PRD R3.*
 
 **US-4.3 Reel renders to spec with fallbacks**
-- **Given** blueprint + voice + words + theme `kinetic-bold`, **When** I run `render-reel`, **Then** `reel-1080x1920.mp4` passes resolution, duration ±0.5s, and `ffprobe` audio-track checks.
+- **Given** blueprint + voice + words + preset `alex-hormozi` + `--platform all`, **When** I run `render reel`, **Then** 1080×1080 + 1080×1350 + 1080×1920 MP4s pass resolution, duration ±0.5s, and `ffprobe` audio-track checks.
 - AC: (1) 30s fixture in 1–3 min warm on ref hw; (2) missing B-roll uses gradient + log; (3) `--fast-draft` renders faster preview. *→ E4-F3/F4. Covers PRD R5.*
+
+**US-4.4 Presets, ducking, and toggles behave**
+- **Given** a blueprint with `audioTags` + `presetTweaks` and `--preset faceless-docu`, **When** I run `render reel --no-bgm`, **Then** BGM/SFX stages are skipped (toggle overrides prompt), VO stays full volume, and warnings list the stripped requests.
+- AC: (1) Preset switch changes caption/overlay signature; (2) duck curve 15% speech / 35% pause when enabled; (3) hybrid tweaks never alter geometry. *→ E4-F3 + §4.6.*
 
 ### Epic 5 — Assets & Templates
 

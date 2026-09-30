@@ -1,0 +1,25 @@
+{
+  "version": "features/v1",
+  "tts": {
+    "kokoro": { "enabled": true },
+    "edgeFallback": { "enabled": true }
+  },
+  "stt": {
+    "whisper": { "enabled": true }
+  },
+  "audio": {
+    "sfx": { "enabled": true },
+    "bgm": { "enabled": true },
+    "ducking": { "enabled": true }
+  },
+  "media": {
+    "pexels": { "enabled": true },
+    "pixabay": { "enabled": true },
+    "openverse": { "enabled": true },
+    "localOverrides": { "enabled": true }
+  },
+  "render": {
+    "remotion": { "enabled": true },
+    "dynamicL4": { "enabled": true }
+  }
+}
