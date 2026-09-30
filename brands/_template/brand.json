@@ -1,0 +1,16 @@
+{
+  "name": "Template (copy me)",
+  "slug": "_template",
+  "colors": {
+    "primary": "#000000",
+    "secondary": "#FFFFFF",
+    "accent": "#FFD60A",
+    "bg": "#111111",
+    "text": "#FFFFFF"
+  },
+  "fonts": { "display": "Inter", "body": "Inter" },
+  "logo": "",
+  "voice": { "id": "kokoro-default", "speed": 1.0 },
+  "tone": "neutral",
+  "ctaDefaults": "Follow for more"
+}

@@ -1,0 +1,25 @@
+# Pipeline stage defaults (M0 scaffold; tuned per NFR-1/NFR-2 on ref hardware).
+version: "pipeline/v1"
+stages:
+  llm:
+    timeoutMs: 30000
+    retriesPerModel: 1
+  tts:
+    chunkMaxChars: 500
+    sampleRateHz: 22050
+    reuseCache: true
+  stt:
+    model: "base"
+    draftModel: "tiny"
+  pexels:
+    orientationDefault: "any"
+    strictAssets: false
+    reuseCache: true
+render:
+  jobs: 1
+  fastDraft: false
+cache:
+  dir: ".cache"
+  lruMaxGb: 5
+output:
+  dir: "out"

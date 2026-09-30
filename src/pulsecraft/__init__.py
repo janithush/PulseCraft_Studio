@@ -1,0 +1,1 @@
+"""PulseCraft Studio core package."""
