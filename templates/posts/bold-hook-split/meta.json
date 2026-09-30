@@ -1,0 +1,7 @@
+{
+  "layoutId": "bold-hook-split",
+  "displayName": "Bold Hook Split",
+  "version": "0.1.0",
+  "supportedCanvas": ["1080x1080", "1080x1350"],
+  "safeAreas": { "px": 80 }
+}

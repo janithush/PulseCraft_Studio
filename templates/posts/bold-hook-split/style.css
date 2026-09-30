@@ -1,0 +1,20 @@
+/* bold-hook-split — offline-safe base styles; brand tokens injected via tokens.css */
+.canvas {
+  width: 1080px;
+  background: var(--brand-bg, #111111);
+  color: var(--brand-text, #ffffff);
+  font-family: var(--brand-display, system-ui, sans-serif);
+}
+.hook {
+  font-size: 96px;
+  font-weight: 800;
+  line-height: 1.05;
+}
+.sub {
+  font-size: 48px;
+  opacity: 0.9;
+}
+.cta {
+  font-size: 40px;
+  color: var(--brand-accent, #ffd60a);
+}
