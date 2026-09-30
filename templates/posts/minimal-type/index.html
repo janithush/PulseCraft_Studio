@@ -6,10 +6,7 @@
     <title>{{ hook }}</title>
   </head>
   <body class="canvas-{{ canvas }}">
-    <main class="canvas" data-layout="bold-hook-split">
-      {% if badge %}
-      <div class="badge">{{ badge }}</div>
-      {% endif %}
+    <main class="canvas" data-layout="minimal-type">
       <section class="hook">{{ hook }}</section>
       {% if sub %}
       <section class="sub">{{ sub }}</section>
@@ -23,13 +20,6 @@
       {% endif %}
       {% if cta %}
       <footer class="cta">{{ cta }}</footer>
-      {% endif %}
-      {% if hashtags %}
-      <div class="hashtags">
-        {% for tag in hashtags %}
-        <span>{{ tag }}</span>
-        {% endfor %}
-      </div>
       {% endif %}
     </main>
   </body>

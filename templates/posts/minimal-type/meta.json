@@ -1,12 +1,12 @@
 {
-  "layoutId": "bold-hook-split",
-  "displayName": "Bold Hook Split",
+  "layoutId": "minimal-type",
+  "displayName": "Minimal Type",
   "version": "0.1.0",
   "engine": "jinja2",
   "supportedCanvas": ["1080x1080", "1080x1350"],
   "safeAreas": { "px": 80 },
   "placeholders": {
     "required": ["hook"],
-    "optional": ["sub", "cta", "bullets", "hashtags", "badge", "canvas"]
+    "optional": ["sub", "cta", "bullets", "canvas"]
   }
 }

@@ -385,14 +385,36 @@ pulsecraft templates clear --kind reels --id calm-caption --force
 - `init-brand --slug acme` scaffolds from `brands/_template/` + runs `validate-brand` + golden smoke; `validate-brand` enforces `brand.schema.json` (bad hex/missing font = precise errors).
 - Tests: brand-swap snapshot (same blueprint × 2 brands → themed diff, zero engine diff), invalid-brand rejection, template add/clear round-trip.
 
+#### 4.2.1 Four-Layer Dynamic Layout Strategy (M2)
+
+Pre-built templates cover the common cases; the LLM covers the long tail. Layer resolution order is fixed and logged per render:
+
+| Layer | Name | Mechanism | When used |
+|-------|------|-----------|-----------|
+| L1 | Conditionals | Jinja2 `{% if %}` blocks auto-hide empty/optional fields (sub, cta, bullets, badge, image) — missing data collapses without trace | Every render |
+| L2 | Loops / Arrays | Jinja2 `{% for %}` over `bullets[]` / `hashtags[]` with per-item clamp | Bullet lists, hashtag rows |
+| L3 | Pre-built Variants | `blueprint.layout` → `templates/posts/<layout>/` selected from the validated catalog | Layout id matches a catalog pack |
+| L4 | Full Dynamic LLM Layout Generation (fallback) | `PROMPT_EXPANSION` task generates raw HTML/Tailwind for the blueprint's canvas sizes; rendered through the same sandboxed Playwright pipeline, optionally promoted via `templates add` | No catalog layout satisfies `layout` / `variantHint`, or L3 validation fails |
+
+Rules (normative): L1–L3 are pure data hydration — no LLM at render time, deterministic for a fixed blueprint + brand. L4 output MUST pass the same offline-safety lint (no remote URLs, bundled fonts), dimension asserts, and contrast-warn gate as L3. The used layer + `model_used` (L4) are recorded in `run-manifest.json` for audit.
+
+#### 4.2.2 Visual Template Inspector & Tag Previewer (M2)
+
+`pulsecraft templates inspect <name>` hydrates a template's placeholders with visual badge tags (`[Headline Here]`, `[Hook Here]`, `[CTA Here]`, `[Bullet 1..n]`, `[Image Here]`) so authors judge layout/overflow without real copy:
+
+- `inspect_template(name: str)` (in `templates_mgr/manager.py`) returns `{html, schema}` where `schema = {required: [...], optional: [...]}` derived from the Jinja2 AST plus `meta.json` placeholder declarations. Required = referenced without a default or `{% if %}` guard; optional = guarded or defaulted.
+- Preview HTML is the real template rendered with badge-tag values (identical CSS, both canvas sizes); the CLI prints the placeholder schema table and writes the preview HTML (PNG preview via the static renderer is optional).
+- Mismatches (template uses an undeclared variable, `meta.json` declares an unused one) surface as warnings in the inspect output — never hard errors.
+
 ### 4.3 Static Post Renderer (Playwright)
 
 **Goal (PRD FR-2):** pixel-perfect FB & IG PNGs from dynamic HTML/CSS templates.
 
-- `render_static/playwright_render.py`: single Chromium instance, one viewport at a time (memory ceiling, PRD NFR-1.2); viewports `1080×1080` and `1080×1350` (deviceScaleFactor 2 or 1080 CSS px), `waitUntil: networkidle` + font-ready wait, scrollbars hidden, deterministic clip; `file://` cached Pexels assets only (offline-safe); fallback solid/gradient if missing (logged).
+- `render_static/renderer.py` (`StaticPostRenderer`, Playwright Python API): single Chromium instance, one viewport at a time (memory ceiling, PRD NFR-1.2); viewports `1080×1080` and `1080×1350` (deviceScaleFactor 2 or 1080 CSS px), `waitUntil: networkidle` + font-ready wait, scrollbars hidden, deterministic clip; `file://` cached Pexels assets only (offline-safe); fallback solid/gradient if missing (logged).
 - `tokens.py` merges `brands/<slug>.json` over `_base.json` → `tokens.css` (colors, fonts, logo path); `assert.py` checks PNG headers post-export, fails loudly on mismatch.
 - Text safety: headline auto-fit/clamp (shrink or ellipsis, never overflow), safe-area padding per `meta.json`, contrast helper warns on <4.5:1 body.
-- CLI: `render-static --blueprint out/blueprint.json --brand acme` → `out/<run-id>/square-1080x1080.png`, `vertical-1080x1350.png`, `meta.json {dimensions, hashes, durationMs, templateId, brandSlug}`.
+- 4-layer resolution (see §4.2.1): hydrate L1–L3 from the blueprint; on unknown `layout` / `variantHint` mismatch, trigger the `PROMPT_EXPANSION` LLM task (L4) to generate raw HTML/Tailwind, lint it offline-safe, and render through the identical pipeline.
+- CLI: `pulsecraft render post --blueprint out/blueprint.json --brand acme --out out/<run-id>` → `square-1080x1080.png`, `vertical-1080x1350.png`, `meta.json {dimensions, hashes, durationMs, templateId, brandSlug, layer}`.
 - Perf (PRD NFR-2.1): warm-cache E2E <60s target; PNG shot <15s/size; per-stage timings recorded. Flakiness guards (PRD R4): bundled fonts, single instance, one screenshot retry.
 
 ### 4.4 Short-Form Video Renderer (Remotion)

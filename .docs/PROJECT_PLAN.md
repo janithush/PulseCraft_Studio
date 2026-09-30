@@ -66,8 +66,9 @@ Milestones are **acceptance-gated**: a milestone is done only when all mapped ep
 | M2.2 | Token pipeline (`merge.py` `_base.json` inheritance + `tokens.py` → `tokens.css`) + `validate-brand` | Bad hex/missing font fails with precise errors; base fallback warns, never crashes |
 | M2.3 | Playwright renderer (single Chromium, 1080×1080 + 1080×1350, font-ready + `networkidle`, `file://` assets, 1 retry) + PNG header asserts | Both PNGs byte-exact dims (Pillow/sharp); 120-char hook never overflows; golden snapshots approved |
 | M2.4 | Brand-swap proof: same blueprint × 2 brands → correctly themed outputs, zero engine diff | Snapshot diff test green |
+| M2.5 | 4-layer layout strategy (L1 conditionals auto-hide, L2 loops for bullets/hashtags, L3 pre-built variants, L4 `PROMPT_EXPANSION` HTML fallback) + Visual Template Inspector (`templates inspect` with badge-tag preview + required/optional schema) | `inspect bold-hook-split` shows schema table + preview HTML; unknown layout triggers L4 with layer logged in manifest |
 
-**Exit demo:** `render-static --blueprint fixture --brand acme` → 2 exact PNGs + `meta.json` (dims, hashes, ms) in <15s/size warm; `init-brand --slug demo` passes smoke.
+**Exit demo:** `render post --blueprint fixture --brand acme` → 2 exact PNGs + `meta.json` (dims, hashes, ms) in <15s/size warm; `templates inspect bold-hook-split` renders badge-tag preview; `init-brand --slug demo` passes smoke.
 
 ### M3: Short-Form Video Reel Engine (Remotion, Kokoro TTS, Faster-Whisper Captions)
 
@@ -150,6 +151,7 @@ Each epic lists **features** (shippable vertical slices), primary specs, and mil
 | E3-F2 Brand system (static) | `_base.json` inheritance, `merge.py`, `tokens.css`, `validate-brand` | `brands/`, `schemas/brand.schema.json` |
 | E3-F3 Playwright renderer + asserts | Single instance, exact viewports, font-ready wait, `file://` assets, header asserts, `meta.json` | `src/pulsecraft/render_static/` |
 | E3-F4 Safety + swap proof | Auto-fit/clamp, safe-area, contrast warn, brand-swap snapshot test | `tests/snapshots/`, `tests/e2e/test_static.py` |
+| E3-F5 Dynamic layers + inspector | L1 conditionals, L2 loops, L4 LLM HTML fallback via `PROMPT_EXPANSION`, `inspect_template()` badge-tag preview + placeholder schema | `src/pulsecraft/templates_mgr/manager.py`, `src/pulsecraft/render_static/renderer.py` |
 
 ### Epic 4: Short-Form Video Engine (`/templates/reels/`, Remotion React, Kokoro TTS, Faster-Whisper INT8, Kinetic typography)
 
@@ -227,6 +229,14 @@ Format: **Given-When-Then + explicit acceptance criteria (AC) + mapped epic/feat
 **US-3.3 Onboard a brand with config only**
 - **Given** `brands/_template/`, **When** I run `init-brand --slug demo` and edit colors/fonts/logo/voice, **Then** `validate-brand` passes and the golden smoke renders themed outputs with zero engine diff.
 - AC: (1) Invalid brand (bad hex/missing font) fails with precise errors; (2) same prompt × 2 brands → themed diff; (3) onboarding <30 min per runbook. *→ E3-F2. Covers PRD G3.*
+
+**US-3.4 Dynamic layers degrade gracefully**
+- **Given** a blueprint with empty `sub`/`cta`, a 3-item `bullets[]`, and an unknown `layout` id, **When** I render, **Then** L1 hides the empty sections, L2 iterates the bullets, and L4 generates fallback HTML via `PROMPT_EXPANSION` with `layer: L4` logged in the manifest.
+- AC: (1) No empty-section whitespace gaps; (2) all bullets rendered; (3) L4 output passes offline-safety lint + dimension asserts. *→ E3-F5.*
+
+**US-3.5 Inspect template before writing copy**
+- **Given** template `bold-hook-split`, **When** I run `templates inspect bold-hook-split`, **Then** I see a badge-tag preview (`[Headline Here]`, …) plus a required/optional placeholder schema table.
+- AC: (1) Required vs optional derived from Jinja2 AST + `meta.json`; (2) undeclared/unused vars warn without failing; (3) preview uses production CSS. *→ E3-F5.*
 
 ### Epic 4 — Short-Form Video Engine
 
