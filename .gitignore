@@ -2,6 +2,9 @@
 __pycache__/
 *.pyc
 .venv/
+.coverage
+coverage.xml
+htmlcov/
 # Node
 node_modules/
 # Models / cache / outputs
