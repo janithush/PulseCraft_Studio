@@ -101,9 +101,7 @@ def run_preflight(
         [name for name in REQUIRED_PACKAGES if _package_missing(name)] if check_packages else []
     )
     missing_binaries = (
-        [name for name in REQUIRED_BINARIES if shutil.which(name) is None]
-        if check_binaries
-        else []
+        [name for name in REQUIRED_BINARIES if shutil.which(name) is None] if check_binaries else []
     )
     missing_env = (
         [key for key in REQUIRED_ENV_KEYS if not os.environ.get(key, "").strip()]
