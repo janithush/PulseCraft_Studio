@@ -5,9 +5,9 @@ import { motion } from "framer-motion";
 import { getFeatures, patchFeature } from "../lib/api";
 
 const GROUPS: { title: string; paths: string[] }[] = [
-  { title: "Default Processing Engines", paths: ["tts.kokoro", "stt.whisper"] },
+  { title: "Processing Engines", paths: ["tts.kokoro", "stt.whisper"] },
   { title: "Graphics APIs", paths: ["media.pexels", "media.pixabay", "media.openverse"] },
-  { title: "Audio APIs", paths: ["audio.sfx", "audio.bgm"] },
+  { title: "Audio Engines", paths: ["audio.sfx", "audio.bgm"] },
 ];
 
 function readEnabled(features: Record<string, unknown>, dotted: string): boolean {

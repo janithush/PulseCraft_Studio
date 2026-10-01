@@ -12,25 +12,19 @@ import { galleryKind, getJob, listBrands } from "../lib/api";
 
 export default function Home() {
   const [items, setItems] = useState<GalleryItem[]>([]);
-  const [brands, setBrands] = useState<string[]>(["acme"]);
-  const [brand, setBrand] = useState("acme");
+  const [brands, setBrands] = useState<string[]>([]);
+  const [brand, setBrand] = useState("");
   const [prompt, setPrompt] = useState("");
 
   const refreshBrands = useCallback(async () => {
     try {
       const { brands: slugs } = await listBrands("");
-      if (slugs.length > 0) {
-        setBrands((prev) => {
-          const merged = Array.from(new Set([...slugs, ...prev]));
-          return merged;
-        });
-        setBrand((prev) => {
-          if (slugs.includes(prev) || prev) return prev;
-          return slugs[0];
-        });
-      }
+      // Merge server slugs with any local-only slug; never auto-select —
+      // the studio starts at "(No Brand Selected)" per visual review.
+      setBrands((prev) => Array.from(new Set([...slugs, ...prev])));
+      setBrand((prev) => (prev && slugs.includes(prev) ? prev : prev));
     } catch {
-      // keep defaults when the backend is unreachable
+      // keep local state when the backend is unreachable
     }
   }, []);
 

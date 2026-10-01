@@ -95,7 +95,7 @@ export default function BrandSelector({
           data-testid="brand-active"
           className="rounded-full bg-[#A3E635] px-4 py-1.5 text-sm font-medium text-slate-950 glow-neon"
         >
-          {selected || "(none)"}
+          {selected || "(No Brand Selected)"}
         </span>
       </div>
     </motion.section>
