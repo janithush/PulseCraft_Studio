@@ -130,11 +130,14 @@ def validate_brand_payload(data: dict[str, Any]) -> tuple[dict[str, Any], list[s
 
 def artifact_urls(artifacts: dict[str, str], root: str | Path) -> dict[str, str]:
     """Map artifact paths to browser-fetchable `/api/artifacts/...` URLs."""
-    base = Path(root)
+    # Resolve both sides: renderers return absolute paths (needed by Remotion's
+    # child cwd) while the root is usually relative; without this, relative_to
+    # raises ValueError and URLs degrade to bare filenames (gallery 404s).
+    base = Path(root).resolve()
     urls: dict[str, str] = {}
     for key, raw in artifacts.items():
         try:
-            rel = Path(raw).relative_to(base)
+            rel = Path(raw).resolve().relative_to(base)
         except ValueError:
             rel = Path(Path(raw).name)
         urls[key] = "/api/artifacts/" + rel.as_posix()
