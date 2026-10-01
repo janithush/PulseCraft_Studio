@@ -575,6 +575,16 @@ pulsecraft check-models
 
 `PATCH /api/features {path, enabled}` validates dotted paths via `FeatureFlags.set()` and persists; unknown paths → 422 with precise error.
 
+### 4.15 M7 Dynamic Orchestration APIs (Models, Brands, Playground, Artifacts)
+
+**Goal:** the UI from §4.12 can drive models, brands, single-resource renders, and finished artifacts — same thin-wrapper rule, no engine changes.
+
+- **Artifact serving:** `GET /api/artifacts/{path:path}` streams files from the `output/` root (`output_root`, injectable) with a CWD-containment guard (escape → 403, missing → 404) and mimetype sniffing. Every job result now also carries `artifact_urls: {key: "/api/artifacts/<rel>"}` (relative to the request's `out_dir`), so the browser never sees server-filesystem paths. This un-breaks `InteractivePreviewGallery` (M6 left it permanently empty).
+- **Dynamic brands:** `GET /api/brands/{slug}` returns the merged brand document via `StaticPostRenderer.load_brand()` (`_base.json` inheritance + warnings; 404 when unresolvable). `POST /api/brands` validates `{slug, name, colors, fonts, voice}` (slug `^[a-z0-9-]{2,32}$`, reserved `_base`/`_template` rejected, traversal-guarded; `colors.primary` `#RGB/#RRGGBB`; fonts need `display`+`body`; voice needs `id` + `speed` 0.5–2.0; extras like `logo`/`tone`/`ctaDefaults` pass through) and upserts `brands/<slug>.json` (201 create / 200 replace; value errors → 422). NOTE: writes target `brands/`, the same dir `GET /api/brands` globs and renderers resolve — not `config/`.
+- **Model orchestrator:** `GET /api/models` returns the live registry (`version`, per-task `chain[]`, per-model `{label, status, lastChecked}`). `PATCH /api/models` supports `{op: set_chain, task, chain}` (unknown task/empty chain/unregistered model id → 422) and `{op: add_model, id, label, tasks?}` (`vendor/name` shape enforced), reusing `ModelRegistry.set_chain/add_model` + `save()`. Caveat: the file is read-modify-written, so concurrent PATCH vs. run-time status persistence can clobber — UI refreshes after each write.
+- **Resource playground:** `POST /api/render {kind: render-post|render-reel, blueprint, brand, preset, platform}` → 202 `{job_id}`; the queue runner executes a single render into `output/playground-<id>/` via the injected (or default) static/video renderers. Unknown kind / empty blueprint → 422. Shares the concurrency-1 worker and `gc` hook (§4.13).
+- **REST surface delta vs §4.13:** + `GET /api/brands/{slug}`, `POST /api/brands`, `GET /api/models`, `PATCH /api/models`, `POST /api/render`, `GET /api/artifacts/{path}`.
+
 ---
 
 ## 5. Testing Strategy (TDD Framework)
