@@ -76,6 +76,22 @@ def default_runner(cmd: list[str], cwd: Path) -> Any:
     return subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, timeout=600)
 
 
+def audio_data_uri(path: str | Path) -> str:
+    """Encode a local audio file as a base64 data URI for Remotion props.
+
+    Remotion's asset downloader only fetches ``http(s)`` URLs, so absolute
+    local paths (e.g. ``D:/.../*.wav``) fail in ``downloadAsset``. A
+    ``data:audio/wav;base64,...`` URI is written inline by the renderer
+    and works on every platform.
+    """
+    import base64
+
+    file_path = Path(path)
+    mime = {".wav": "audio/wav", ".mp3": "audio/mp3"}.get(file_path.suffix.lower(), "audio/wav")
+    data = file_path.read_bytes()
+    return f"data:{mime};base64," + base64.b64encode(data).decode("ascii")
+
+
 class VideoReelRenderer:
     """End-to-end reel pipeline; heavy stages degrade per feature flags."""
 
@@ -154,11 +170,17 @@ class VideoReelRenderer:
         for canvas_id in canvases:
             width, height = CANVAS_WH[canvas_id]
             audio_src = mix_path or voice_path or ""
+            try:
+                audio_arg = audio_data_uri(audio_src) if audio_src else ""
+            except OSError as exc:
+                warnings.append(f"voiceover audio unreadable ({exc}); rendering without audio")
+                audio_arg = ""
             props = {
                 "script": cleaned.get("script", []),
                 "scenes": scenes,
-                # Absolute POSIX so Remotion resolves audio regardless of its child cwd.
-                "audioSrc": Path(audio_src).resolve().as_posix() if audio_src else "",
+                # Data URI: Remotion only downloads http(s) assets, so a local
+                # path would fail in downloadAsset (use inline audio instead).
+                "audioSrc": audio_arg,
                 "words": words,
                 "brandTokens": tokens.get("colors", {}),
                 "preset": preset,

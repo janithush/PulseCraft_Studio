@@ -222,6 +222,27 @@ def test_render_reel_completes_without_voiceover_on_tts_error(tmp_path: Path) ->
     assert any("voiceover unavailable" in w for w in result.warnings)
 
 
+def test_audio_src_is_inline_data_uri(tmp_path: Path) -> None:
+    import base64
+    import json as jsonlib
+
+    voice = tmp_path / "voice.wav"
+    voice.write_bytes(b"RIFF-voice-bytes")
+    tts = MagicMock()
+    tts.synthesize.return_value = (voice, True)
+    stt = MagicMock()
+    stt.transcribe.return_value = {"words": [], "model": "uniform", "estimated": True}
+    media = MagicMock()
+    media.fetch_scene.return_value = ({"url": "u", "provider": "pexels", "localPath": ""}, [])
+    renderer = _renderer(tts=tts, stt=stt, media=media, runner=_ok_runner({}))
+    renderer.render_reel(
+        _blueprint(), brand="acme", preset="alex-hormozi", platform="fb", out_dir=tmp_path
+    )
+    props = jsonlib.loads((tmp_path / "props-1080x1080.json").read_text(encoding="utf-8"))
+    assert props["audioSrc"].startswith("data:audio/wav;base64,")
+    assert base64.b64decode(props["audioSrc"].split(",", 1)[1]) == b"RIFF-voice-bytes"
+
+
 def test_remotion_cmd_uses_entry_and_composition_id(tmp_path: Path) -> None:
     seen: list[list[str]] = []
 
