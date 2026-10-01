@@ -90,6 +90,14 @@ class WhisperTimestamps:
                 "model": "uniform",
                 "estimated": True,
             }
+        if not words:
+            # Whisper produced no word timestamps (silence/short clip):
+            # fall back to uniform timing so captions still render.
+            return {
+                "words": uniform_words(text_hint, duration),
+                "model": "uniform",
+                "estimated": True,
+            }
         return {"words": words, "model": f"{self._model}-int8", "estimated": False}
 
     def _whisper_words(self, audio_path: Path) -> list[dict[str, Any]]:

@@ -36,9 +36,10 @@ REQUIRED_PACKAGES: dict[str, str] = {
     "fastapi": "pip install fastapi>=0.110",
     "uvicorn": "pip install uvicorn>=0.29",
     # Production-grade media/LLM/doc extras (audited, hard-block if missing):
-    "edge_tts": "pip install edge-tts",
-    "faster_whisper": "pip install faster-whisper",
+    "edge_tts": "pip install edge-tts>=7.0",
+    "faster_whisper": "pip install faster-whisper>=1.0",
     "kokoro": "pip install kokoro>=0.9.4",
+    "kokoro_onnx": "pip install kokoro-onnx>=0.4.0",
     "pypdf": "pip install pypdf",
     "openpyxl": "pip install openpyxl",
 }
