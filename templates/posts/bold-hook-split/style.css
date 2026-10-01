@@ -1,0 +1,47 @@
+/* bold-hook-split — offline-safe base styles; brand tokens injected via tokens.css */
+body {
+  margin: 0;
+}
+.canvas-square .canvas {
+  width: 1080px;
+  height: 1080px;
+}
+.canvas-vertical .canvas {
+  width: 1080px;
+  height: 1350px;
+}
+.canvas {
+  box-sizing: border-box;
+  padding: 80px;
+  background: var(--brand-bg, #111111);
+  color: var(--brand-text, #ffffff);
+  font-family: var(--brand-display, system-ui, sans-serif);
+  overflow: hidden;
+}
+.badge {
+  display: inline-block;
+  font-size: 32px;
+  padding: 8px 24px;
+  background: var(--brand-accent, #ffd60a);
+  color: #111111;
+}
+.hook {
+  font-size: 96px;
+  font-weight: 800;
+  line-height: 1.05;
+}
+.sub {
+  font-size: 48px;
+  opacity: 0.9;
+}
+.bullets {
+  font-size: 40px;
+}
+.cta {
+  font-size: 40px;
+  color: var(--brand-accent, #ffd60a);
+}
+.hashtags {
+  font-size: 32px;
+  opacity: 0.8;
+}

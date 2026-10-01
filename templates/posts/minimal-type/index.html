@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="./style.css" />
+    <title>{{ hook }}</title>
+  </head>
+  <body class="canvas-{{ canvas }}">
+    <main class="canvas" data-layout="minimal-type">
+      <section class="hook">{{ hook }}</section>
+      {% if sub %}
+      <section class="sub">{{ sub }}</section>
+      {% endif %}
+      {% if bullets %}
+      <ul class="bullets">
+        {% for bullet in bullets %}
+        <li>{{ bullet }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if cta %}
+      <footer class="cta">{{ cta }}</footer>
+      {% endif %}
+    </main>
+  </body>
+</html>
