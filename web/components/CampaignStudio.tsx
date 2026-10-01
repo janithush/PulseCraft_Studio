@@ -7,9 +7,18 @@ import { createCampaign, getJob } from "../lib/api";
 const PRESETS = ["alex-hormozi", "faceless-docu", "b-roll-centric", "kinetic-bold"];
 const PLATFORMS = ["fb", "ig", "all"];
 
-export default function CampaignStudio({ onDone }: { onDone: (jobId: string) => void }) {
+export default function CampaignStudio({
+  onDone,
+  brand,
+  onBrandChange,
+  brands,
+}: {
+  onDone: (jobId: string) => void;
+  brand: string;
+  onBrandChange: (slug: string) => void;
+  brands: string[];
+}) {
   const [prompt, setPrompt] = useState("");
-  const [brand, setBrand] = useState("acme");
   const [platform, setPlatform] = useState("all");
   const [preset, setPreset] = useState(PRESETS[0]);
   const [busy, setBusy] = useState(false);
@@ -60,10 +69,14 @@ export default function CampaignStudio({ onDone }: { onDone: (jobId: string) => 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <select
           value={brand}
-          onChange={(e) => setBrand(e.target.value)}
+          onChange={(e) => onBrandChange(e.target.value)}
           className="rounded-full bg-white/5 border border-white/10 px-4 py-2 text-sm"
         >
-          <option value="acme">acme</option>
+          {brands.map((slug) => (
+            <option key={slug} value={slug}>
+              {slug}
+            </option>
+          ))}
         </select>
         {PLATFORMS.map((p) => (
           <button

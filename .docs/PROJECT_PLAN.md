@@ -128,7 +128,19 @@ Milestones are **acceptance-gated**: a milestone is done only when all mapped ep
 
 **Exit demo:** `uvicorn` :8000 + `npm run dev` :3000 → prompt in CampaignStudio → job completes → glass gallery shows PNGs/MP4 + toggles flip live.
 
-**Roadmap summary:** `M0 (week 1, unblocks all) → M1 + M2 (parallel after M0) → M3 (needs M1) → M4 (needs M2/M3) → M5 (needs all) → M6 (needs M5)`. M1/M2 can run in parallel; M4 integrates M2+M3 outputs.
+### M7: Dynamic Model/Brand Orchestration + Resource Playground
+
+**Objective:** UI-driven models, brands, single-resource renders, and visible artifacts over the M6 stack.
+**Maps to:** All Epics · ARCH §4.15.
+
+| # | Deliverable | Done when |
+|---|-------------|-----------|
+| M7.1 | Backend extensions (`src/pulsecraft/web/app.py`): `GET /api/artifacts/{path}` static serving + `artifact_urls` in all job results; `GET /api/brands/{slug}` + `POST /api/brands` (schema-validated upsert into `brands/`); `GET/PATCH /api/models` (chain reorder + add-model over `ModelRegistry`); `POST /api/render` (`render-post`/`render-reel` single-resource jobs into `output/playground-*/`) | New `tests/unit/test_web_api.py` cases green (brands CRUD+422s, models reorder/add+422s, render kinds+artifact URLs, thumb/artifact 403+404) |
+| M7.2 | Frontend (`web/`): gallery populated from `artifact_urls` on every job; `BrandManager` (dynamic select + create form); `ModelPriorityPanel` (per-task ↑/↓ reorder + add-model with status badges); `ResourcePlayground` (blueprint JSON editor + single render + gallery append) | `npm run build` clean; gallery shows campaign + playground outputs |
+
+**Exit demo:** create brand in UI → select it → run campaign → gallery fills; reorder a model chain → PATCH persists; playground renders a single post from pasted JSON.
+
+**Roadmap summary:** `M0 (week 1, unblocks all) → M1 + M2 (parallel after M0) → M3 (needs M1) → M4 (needs M2/M3) → M5 (needs all) → M6 (needs M5) → M7 (needs M6)`. M1/M2 can run in parallel; M4 integrates M2+M3 outputs.
 
 ---
 
