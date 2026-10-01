@@ -476,6 +476,40 @@ Preset components are size-parametric (`width`/`height` props); caption safe-are
 - `common/feature_flags.py`: `FeatureFlags.load()` + `from_cli(overrides)`; `enabled("audio.bgm")`; `guard(feature, requested) -> bool` (= enabled AND requested); `enforce(blueprint) -> (blueprint, warnings)` strips disabled requests (e.g. `audioTags` dropped when SFX/BGM off, `layout` forced L3-only when `render.dynamicL4` off).
 - Cost/key guardrails: providers without configured keys are auto-treated as disabled (warning, no crash); `--strict-assets` re-escalates to hard fail.
 
+### 4.7 M4 Asset Caching & Hash Indexing Architecture (`.cache/assets/`)
+
+**Goal (PRD FR-4, R2):** disk-backed, content-addressed cache for every remote media/audio byte so repeat runs never re-hit the network.
+
+- `src/pulsecraft/assets/cache.py` — `AssetCache(cache_dir=".cache/assets/")`:
+  - **Hash-indexed layout:** `key = sha256("provider|query|url")[:16]`; bytes stored at `.cache/assets/<provider>/<key><ext>`; sidecar index at `.cache/assets/index.json` mapping `key → {provider, query, url, path, size_bytes, sha256, fetched_at}`.
+  - **Providers covered:** Pexels, Pixabay, Freesound, Openverse (media + audio). `fetch_or_download(provider, query, url, downloader)` checks the index + file existence first (cache **hit** → return path, log `cache: hit`); on **miss** it calls `downloader()` once, writes bytes atomically, updates `index.json`, logs `cache: miss`.
+  - **Duplicate-request prevention:** identical `(provider, query, url)` tuples resolve to the same key; concurrent in-process callers share the on-disk entry — no second HTTP GET.
+  - **Eviction/clearing:** `clear() → int` deletes the whole `.cache/assets/` tree (exposed as `pulsecraft assets clear-cache`); `evict_lru(max_bytes)` drops oldest `fetched_at` entries first (5GB default budget, LRU). `list_cached()` returns index rows for `pulsecraft assets list`.
+  - **Resilience:** corrupt/missing index is rebuilt by directory scan; partial downloads use temp-file + rename; every hit/miss is structured-logged `{stage: "assets.cache", provider, key, hit, ms}`.
+
+### 4.8 M4 Local Asset Directory Indexer (`input/visuals/` + `input/audio/`)
+
+**Goal:** creator-dropped files override remote fetch with zero config; the indexer makes them discoverable + attributable.
+
+- `src/pulsecraft/assets/local_mgr.py` — `index_local_assets(visuals_dir="input/visuals", audio_dir="input/audio")`:
+  - **Auto-index:** recursive scan of both dirs (created with `.gitkeep`; gitignored content). Each file yields `{name, path, kind: image|video|audio, size_bytes, width?, height?, duration_sec?, sample_rate_hz?}`.
+  - **Metadata extraction:** images/video thumbnails via Pillow (`Image.open` → `width/height`); WAV via `wave` (`frames/rate` → `duration_sec/sample_rate_hz`); MP3/OGG/M4A report `duration_sec=None` unless probed (no hard fail — `None` + warning). Unknown extensions are skipped with a warning, never an exception.
+  - **Tag/file matching:** `find_for_tag(tag)` strips `[Visual: ...]` wrappers, matches case-insensitively by basename (`hero.png` == `input/visuals/hero.png`), traversal-guarded (`Path(name).name` containment check — `../escape.png` → `None`). `resolve_local_override()` in `media_fetcher.py` delegates here.
+  - **CLI surfacing:** `pulsecraft assets list` prints indexed local assets (name, kind, dims/duration) alongside cached remote assets from `AssetCache.list_cached()`.
+
+### 4.9 M4 Unified Template Manager Registry (Posts + Reels)
+
+**Goal (PRD FR-5):** one registry interface for Static Post (HTML/Jinja2) and Video Reel (Remotion React) packs with strict manifest contracts.
+
+- `src/pulsecraft/templates_mgr/registry.py` — `UnifiedTemplateRegistry(root="templates")` wraps the M2 `TemplateManager`:
+  - **`list_all_templates() → list[TemplateEntry]`** scans `templates/posts/` (kind `post`) + `templates/reels/` (kind `reel`); each entry `{name, kind, path, meta}` sorted by `(kind, name)`.
+  - **`get_template_schema(name) → dict`** resolves `name` across both kinds (exact match; ambiguous names prefer `post` with a warning); returns `{"name", "kind", "manifest": <meta.json>, "placeholders": {required, optional}}` — for posts from Jinja2 AST + `meta.json`, for reels from `meta.json` (`themeId`, `sizes`/`size`, `tweaks`).
+  - **`validate_all_templates() → dict[str, list[str]]`** runs strict JSON-schema validation (via `jsonschema`, draft 2020-12) on every `meta.json`:
+    - Post manifest: requires `layoutId, displayName, version, engine==jinja2, supportedCanvas[1..], safeAreas, placeholders{required[], optional[]}`.
+    - Reel manifest: requires `themeId, displayName, version, fps>=1` plus `size` or `sizes[]` matching `^\d+x\d+$`.
+    - Plus M2 checks: `index.html`/`style.css` presence (posts) or `ReelComposition.tsx`/`theme.ts` presence (reels), offline-safety (no `https?://`), placeholder declared-vs-used warnings. Clean pack → `[]`; failures are precise (`"<name>: meta.json invalid: 'layoutId' is required"`).
+  - **CLI:** `pulsecraft templates validate` prints per-template PASS/FAIL + warnings and exits nonzero iff any manifest fails strict validation.
+
 ---
 
 ## 5. Testing Strategy (TDD Framework)

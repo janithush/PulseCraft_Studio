@@ -88,15 +88,18 @@ Milestones are **acceptance-gated**: a milestone is done only when all mapped ep
 ### M4: Free Asset Supply Pipeline Integration (Pexels API & Decoupled /templates)
 
 **Objective:** Zero-subscription visuals fully integrated with cache/resume and template decoupling.
-**Maps to:** Epic 5 · PRD FR-4 (Pexels), FR-5, R2 · ARCH §4.5, §4.2.
+**Maps to:** Epic 5 · PRD FR-4 (Pexels), FR-5, R2 · ARCH §4.5, §4.2, §4.7–§4.9.
 
 | # | Deliverable | Done when |
 |---|-------------|-----------|
 | M4.1 | Multi-source fetcher (Pexels → Pixabay → Openverse order, `PEXELS_API_KEY`/`PIXABAY_API_KEY` via `.env`, Openverse keyless; orientation filter, resize/compress, `.cache/<provider>/<query-hash>/`, `assets/manifest.json` + per-run `ATTRIBUTION.md`) + local overrides (`[Visual: file]` → `input/visuals/`, traversal-guarded) | Manifest records photographer/URL/license for every asset; local tag bypasses network |
 | M4.2 | Failure tree (backoff retry → relaxed query → cache reuse → `assets/fallback/` → continue; hard fail only `--strict-assets`) + LRU eviction >5GB + `--reuse-cache`/`--refresh-assets` | Simulated 429/5xx still renders via fallback with warning |
 | M4.3 | Template manager GA (`templates add/modify/clear/list/preview` for `posts` + `reels`; offline-safety lint: no remote CDN, bundled fonts) | Add→preview→clear round-trip without engine diff; `templates/reels` theme hot-swappable |
+| M4.4 | Asset Caching Engine (`src/pulsecraft/assets/cache.py`): disk-backed hash-indexed cache in `.cache/assets/` for Pexels/Pixabay/Freesound/Openverse bytes; `AssetCache` with hit/miss logging, duplicate-request suppression, `index.json`, `clear()`/`evict_lru()`; CLI `pulsecraft assets clear-cache` | Repeat fetch with same `(provider, query, url)` performs zero HTTP GETs; `clear-cache` empties `.cache/assets/` |
+| M4.5 | Local Asset Indexer (`src/pulsecraft/assets/local_mgr.py`): auto-index `input/visuals/` + `input/audio/` with Pillow/wave metadata (dims, duration/sample-rate) + traversal-guarded tag matching; CLI `pulsecraft assets list` shows local + cached remote | Dropped `hero.png`/`bed.mp3` appear in `assets list` with correct kind + metadata; `[Visual: ../escape]` → `None` |
+| M4.6 | Unified Template Registry (`src/pulsecraft/templates_mgr/registry.py`): single `list_all_templates()` / `get_template_schema(name)` / `validate_all_templates()` over `templates/posts/` + `templates/reels/` with strict `meta.json` JSON-schema validation; CLI `pulsecraft templates validate` | All 2 post + 4 reel packs validate clean; broken manifest fails with precise error + nonzero exit |
 
-**Exit demo:** airplane-mode re-run green; Pexels-outage simulation green via fallback; new theme added live and rendered without code change.
+**Exit demo:** airplane-mode re-run green; Pexels-outage simulation green via fallback; new theme added live and rendered without code change; `assets list` shows local + cached rows; `templates validate` passes on all packs.
 
 ### M5: End-to-End CLI Integration, Quality Assurance, and Final Polish
 

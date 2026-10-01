@@ -163,6 +163,51 @@ def render_reel(
         click.echo(f"warning: {warning}")
 
 
+@main.group(name="assets")
+def assets_group() -> None:
+    """List indexed local assets and cached remote assets."""
+
+
+@assets_group.command(name="list")
+@click.option("--visuals", default="input/visuals", show_default=True)
+@click.option("--audio", default="input/audio", show_default=True)
+@click.option("--cache-dir", default=".cache/assets", show_default=True)
+def assets_list(visuals: str, audio: str, cache_dir: str) -> None:
+    """Show indexed local assets + cached remote assets."""
+    from pulsecraft.assets.cache import AssetCache
+    from pulsecraft.assets.local_mgr import index_local_assets
+
+    click.echo("local assets:")
+    local = index_local_assets(visuals, audio)
+    if not local:
+        click.echo("  (none)")
+    for item in local:
+        detail = f"{item.kind} {item.size_bytes}B"
+        if item.width and item.height:
+            detail += f" {item.width}x{item.height}"
+        if item.duration_sec is not None:
+            detail += f" {item.duration_sec:.2f}s"
+        if item.sample_rate_hz is not None:
+            detail += f" @{item.sample_rate_hz}Hz"
+        click.echo(f"  {item.name}: {detail}")
+    click.echo("cached remote assets:")
+    cached = AssetCache(cache_dir).list_cached()
+    if not cached:
+        click.echo("  (none)")
+    for row in cached:
+        click.echo(f"  {row.get('provider')}/{row.get('key')}: {row.get('path')}")
+
+
+@assets_group.command(name="clear-cache")
+@click.option("--cache-dir", default=".cache/assets", show_default=True)
+def assets_clear_cache(cache_dir: str) -> None:
+    """Clear the `.cache/assets/` hash-indexed asset cache."""
+    from pulsecraft.assets.cache import AssetCache
+
+    removed = AssetCache(cache_dir).clear()
+    click.echo(f"cleared {removed} cached file(s) from {cache_dir}")
+
+
 @main.group(name="templates")
 def templates_group() -> None:
     """Inspect and manage decoupled code templates."""
@@ -203,6 +248,27 @@ def templates_inspect(name: str, kind: str, out: str | None) -> None:
         click.echo(f"preview: {out}")
     else:
         click.echo(preview["html"][:500])
+
+
+@templates_group.command(name="validate")
+def templates_validate() -> None:
+    """Validate all post/reel templates against manifest contracts."""
+    from pulsecraft.templates_mgr.registry import UnifiedTemplateRegistry
+
+    results = UnifiedTemplateRegistry().validate_all_templates()
+    failed = 0
+    for key in sorted(results):
+        warnings = results[key]
+        if not warnings:
+            click.echo(f"PASS {key}")
+        else:
+            failed += 1
+            click.echo(f"FAIL {key}")
+            for warning in warnings:
+                click.echo(f"  warning: {warning}")
+    if failed:
+        raise click.ClickException(f"{failed} template(s) failed validation")
+    click.echo(f"validated {len(results)} template(s): all clean")
 
 
 if __name__ == "__main__":
