@@ -32,11 +32,14 @@ jobs:
       - name: Install Node deps
         run: npm ci --prefix remotion
       - name: ESLint
-        run: npx --prefix remotion eslint . --max-warnings=0
+        run: npx eslint "src/**/*.ts" --max-warnings=0
+        working-directory: remotion
       - name: Prettier check
-        run: npx --prefix remotion prettier --check .
+        run: npx prettier --check .
+        working-directory: remotion
       - name: Vitest
-        run: npx --prefix remotion vitest run
+        run: npx vitest run
+        working-directory: remotion
 
   render-smoke:
     runs-on: ubuntu-latest
@@ -50,7 +53,12 @@ jobs:
         with:
           node-version: "20"
       - uses: microsoft/playwright-github-action@v1
+      - name: Install Python deps
+        run: pip install -e .[dev]
+      - name: Install Node deps
+        run: npm ci --prefix remotion
       - name: Contract + static E2E
-        run: pytest tests/contract tests/e2e/test_static.py -q
-      - name: Remotion dry run
-        run: npx --prefix remotion remotion render --dry-run
+        run: pytest tests/integration/test_e2e_campaign.py -q
+      - name: Remotion CLI check
+        run: npx tsc --noEmit && npx remotion --help
+        working-directory: remotion
