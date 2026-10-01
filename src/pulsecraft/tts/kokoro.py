@@ -264,8 +264,21 @@ def _mp3_to_pcm_ffmpeg(mp3_path: Path, sample_rate: int) -> bytes:
     if ffmpeg is None:
         raise FileNotFoundError("ffmpeg not on PATH")
     completed = subprocess.run(
-        [ffmpeg, "-y", "-v", "error", "-i", str(mp3_path), "-ac", "1", "-ar", str(sample_rate),
-         "-f", "s16le", "-"],
+        [
+            ffmpeg,
+            "-y",
+            "-v",
+            "error",
+            "-i",
+            str(mp3_path),
+            "-ac",
+            "1",
+            "-ar",
+            str(sample_rate),
+            "-f",
+            "s16le",
+            "-",
+        ],
         capture_output=True,
         timeout=120,
     )
