@@ -134,7 +134,10 @@ class VideoReelRenderer:
             )
         self.check_preset(preset)
         canvases = self.platform_canvases(platform)
-        out = Path(out_dir)
+        # Absolute paths: the Remotion child process runs with cwd=remotion/,
+        # so project-root-relative paths would not resolve there (WinError-style
+        # "--props is neither valid JSON nor a file path" failures).
+        out = Path(out_dir).resolve()
         out.mkdir(parents=True, exist_ok=True)
 
         cleaned, warnings = self._flags.enforce(blueprint)
@@ -150,10 +153,12 @@ class VideoReelRenderer:
         started = time.perf_counter()
         for canvas_id in canvases:
             width, height = CANVAS_WH[canvas_id]
+            audio_src = mix_path or voice_path or ""
             props = {
                 "script": cleaned.get("script", []),
                 "scenes": scenes,
-                "audioSrc": str(mix_path or voice_path or ""),
+                # Absolute POSIX so Remotion resolves audio regardless of its child cwd.
+                "audioSrc": Path(audio_src).resolve().as_posix() if audio_src else "",
                 "words": words,
                 "brandTokens": tokens.get("colors", {}),
                 "preset": preset,
@@ -337,14 +342,18 @@ class VideoReelRenderer:
     ) -> None:
         if not self._flags.enabled("render.remotion"):
             raise VideoRenderError("toggle 'render.remotion' disabled")
+        # Absolute POSIX argv: immune to the child cwd (remotion/) and to
+        # Windows backslash handling in the npx.cmd shim chain.
+        target_arg = Path(target).resolve().as_posix()
+        props_arg = Path(props_path).resolve().as_posix()
         cmd = [
             "npx",
             "remotion",
             "render",
             preset,
-            str(target),
+            target_arg,
             "--props",
-            str(props_path),
+            props_arg,
             "--width",
             str(width),
             "--height",
