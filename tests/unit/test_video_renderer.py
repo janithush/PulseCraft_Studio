@@ -52,7 +52,7 @@ def _renderer(**overrides) -> VideoReelRenderer:
 
 def _ok_runner(targets: dict[str, Path]):
     def run(cmd: list[str], cwd: Path):
-        target = Path(cmd[4])
+        target = Path(cmd[5])
         target.write_bytes(b"mp4")
         targets[target.name] = target
         return SimpleNamespace(returncode=0, stderr="")
@@ -220,3 +220,32 @@ def test_render_reel_completes_without_voiceover_on_tts_error(tmp_path: Path) ->
     )
     assert set(result.files) == {"1080x1080", "1080x1920"}
     assert any("voiceover unavailable" in w for w in result.warnings)
+
+
+def test_remotion_cmd_uses_entry_and_composition_id(tmp_path: Path) -> None:
+    seen: list[list[str]] = []
+
+    def record(cmd: list[str], cwd: Path) -> SimpleNamespace:
+        seen.append(cmd)
+        Path(cmd[5]).write_bytes(b"mp4")
+        return SimpleNamespace(returncode=0, stderr="")
+
+    voice = tmp_path / "voice.wav"
+    voice.write_bytes(b"voice")
+    tts = MagicMock()
+    tts.synthesize.return_value = (voice, True)
+    stt = MagicMock()
+    stt.transcribe.return_value = {"words": [], "model": "uniform", "estimated": True}
+    media = MagicMock()
+    media.fetch_scene.return_value = ({"url": "u", "provider": "pexels", "localPath": ""}, [])
+    renderer = _renderer(tts=tts, stt=stt, media=media, runner=record)
+    renderer.render_reel(
+        _blueprint(), brand="acme", preset="b-roll-centric", platform="fb", out_dir=tmp_path
+    )
+    assert seen, "remotion runner was never invoked"
+    for cmd in seen:
+        assert cmd[1:3] == ["remotion", "render"]
+        assert cmd[3].replace("\\", "/").endswith("remotion/src/index.ts")
+        assert cmd[4] == "b-roll-centric"  # composition id == preset
+        assert Path(cmd[5]).is_absolute()
+        assert Path(cmd[cmd.index("--props") + 1]).is_absolute()

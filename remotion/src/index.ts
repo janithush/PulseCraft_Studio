@@ -1,1 +1,4 @@
-export const compositions = ["ReelComposition"];
+import { registerRoot } from "remotion";
+import { RemotionRoot } from "./RemotionRoot";
+
+registerRoot(RemotionRoot);

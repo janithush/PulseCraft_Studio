@@ -344,12 +344,16 @@ class VideoReelRenderer:
             raise VideoRenderError("toggle 'render.remotion' disabled")
         # Absolute POSIX argv: immune to the child cwd (remotion/) and to
         # Windows backslash handling in the npx.cmd shim chain.
+        # Entry point is explicit (src/index.ts calls registerRoot); the
+        # composition id equals the preset (one <Composition> per preset).
+        entry_arg = (self._remotion / "src" / "index.ts").resolve().as_posix()
         target_arg = Path(target).resolve().as_posix()
         props_arg = Path(props_path).resolve().as_posix()
         cmd = [
             "npx",
             "remotion",
             "render",
+            entry_arg,
             preset,
             target_arg,
             "--props",
