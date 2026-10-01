@@ -1,0 +1,9 @@
+export const theme = {
+  themeId: "faceless-docu",
+  displayName: "Faceless Docu",
+  version: "0.1.0",
+  fps: 30,
+  sizes: ["1080x1920", "1080x1350", "1080x1080"],
+  caption: { style: "elegant", overlay: "dark-gradient", zoom: "slow" },
+  tweaks: ["pace"],
+};

@@ -21,6 +21,7 @@
   - [4.3 Static Post Renderer (Playwright)](#43-static-post-renderer-playwright)
   - [4.4 Short-Form Video Renderer (Remotion)](#44-short-form-video-renderer-remotion)
   - [4.5 Audio & Asset Supply Pipeline](#45-audio--asset-supply-pipeline)
+  - [4.6 Feature Toggles & API Guardrails Engine](#46-feature-toggles--api-guardrails-engine)
 - [5. Testing Strategy (TDD Framework)](#5-testing-strategy-tdd-framework)
 - [6. CI/CD & Code Quality Pipeline](#6-cicd--code-quality-pipeline)
 - [Appendix A: End-to-End Sequence & Interfaces](#appendix-a-end-to-end-sequence--interfaces)
@@ -385,24 +386,75 @@ pulsecraft templates clear --kind reels --id calm-caption --force
 - `init-brand --slug acme` scaffolds from `brands/_template/` + runs `validate-brand` + golden smoke; `validate-brand` enforces `brand.schema.json` (bad hex/missing font = precise errors).
 - Tests: brand-swap snapshot (same blueprint × 2 brands → themed diff, zero engine diff), invalid-brand rejection, template add/clear round-trip.
 
+#### 4.2.1 Four-Layer Dynamic Layout Strategy (M2)
+
+Pre-built templates cover the common cases; the LLM covers the long tail. Layer resolution order is fixed and logged per render:
+
+| Layer | Name | Mechanism | When used |
+|-------|------|-----------|-----------|
+| L1 | Conditionals | Jinja2 `{% if %}` blocks auto-hide empty/optional fields (sub, cta, bullets, badge, image) — missing data collapses without trace | Every render |
+| L2 | Loops / Arrays | Jinja2 `{% for %}` over `bullets[]` / `hashtags[]` with per-item clamp | Bullet lists, hashtag rows |
+| L3 | Pre-built Variants | `blueprint.layout` → `templates/posts/<layout>/` selected from the validated catalog | Layout id matches a catalog pack |
+| L4 | Full Dynamic LLM Layout Generation (fallback) | `PROMPT_EXPANSION` task generates raw HTML/Tailwind for the blueprint's canvas sizes; rendered through the same sandboxed Playwright pipeline, optionally promoted via `templates add` | No catalog layout satisfies `layout` / `variantHint`, or L3 validation fails |
+
+Rules (normative): L1–L3 are pure data hydration — no LLM at render time, deterministic for a fixed blueprint + brand. L4 output MUST pass the same offline-safety lint (no remote URLs, bundled fonts), dimension asserts, and contrast-warn gate as L3. The used layer + `model_used` (L4) are recorded in `run-manifest.json` for audit.
+
+#### 4.2.2 Visual Template Inspector & Tag Previewer (M2)
+
+`pulsecraft templates inspect <name>` hydrates a template's placeholders with visual badge tags (`[Headline Here]`, `[Hook Here]`, `[CTA Here]`, `[Bullet 1..n]`, `[Image Here]`) so authors judge layout/overflow without real copy:
+
+- `inspect_template(name: str)` (in `templates_mgr/manager.py`) returns `{html, schema}` where `schema = {required: [...], optional: [...]}` derived from the Jinja2 AST plus `meta.json` placeholder declarations. Required = referenced without a default or `{% if %}` guard; optional = guarded or defaulted.
+- Preview HTML is the real template rendered with badge-tag values (identical CSS, both canvas sizes); the CLI prints the placeholder schema table and writes the preview HTML (PNG preview via the static renderer is optional).
+- Mismatches (template uses an undeclared variable, `meta.json` declares an unused one) surface as warnings in the inspect output — never hard errors.
+
 ### 4.3 Static Post Renderer (Playwright)
 
 **Goal (PRD FR-2):** pixel-perfect FB & IG PNGs from dynamic HTML/CSS templates.
 
-- `render_static/playwright_render.py`: single Chromium instance, one viewport at a time (memory ceiling, PRD NFR-1.2); viewports `1080×1080` and `1080×1350` (deviceScaleFactor 2 or 1080 CSS px), `waitUntil: networkidle` + font-ready wait, scrollbars hidden, deterministic clip; `file://` cached Pexels assets only (offline-safe); fallback solid/gradient if missing (logged).
+- `render_static/renderer.py` (`StaticPostRenderer`, Playwright Python API): single Chromium instance, one viewport at a time (memory ceiling, PRD NFR-1.2); viewports `1080×1080` and `1080×1350` (deviceScaleFactor 2 or 1080 CSS px), `waitUntil: networkidle` + font-ready wait, scrollbars hidden, deterministic clip; `file://` cached Pexels assets only (offline-safe); fallback solid/gradient if missing (logged).
 - `tokens.py` merges `brands/<slug>.json` over `_base.json` → `tokens.css` (colors, fonts, logo path); `assert.py` checks PNG headers post-export, fails loudly on mismatch.
 - Text safety: headline auto-fit/clamp (shrink or ellipsis, never overflow), safe-area padding per `meta.json`, contrast helper warns on <4.5:1 body.
-- CLI: `render-static --blueprint out/blueprint.json --brand acme` → `out/<run-id>/square-1080x1080.png`, `vertical-1080x1350.png`, `meta.json {dimensions, hashes, durationMs, templateId, brandSlug}`.
+- 4-layer resolution (see §4.2.1): hydrate L1–L3 from the blueprint; on unknown `layout` / `variantHint` mismatch, trigger the `PROMPT_EXPANSION` LLM task (L4) to generate raw HTML/Tailwind, lint it offline-safe, and render through the identical pipeline.
+- CLI: `pulsecraft render post --blueprint out/blueprint.json --brand acme --out out/<run-id>` → `square-1080x1080.png`, `vertical-1080x1350.png`, `meta.json {dimensions, hashes, durationMs, templateId, brandSlug, layer}`.
 - Perf (PRD NFR-2.1): warm-cache E2E <60s target; PNG shot <15s/size; per-stage timings recorded. Flakiness guards (PRD R4): bundled fonts, single instance, one screenshot retry.
 
 ### 4.4 Short-Form Video Renderer (Remotion)
 
 **Goal (PRD FR-3):** 1080×1920 MP4 with synchronized VO + word-by-word kinetic typography, no video editor.
 
-- `remotion/` shell: `ReelComposition` fixed at `1080×1920, 30fps`; props `{script, scenes[], audioSrc, words[], brandTokens}`; themes imported dynamically from `/templates/reels/<themeId>`; per-scene B-roll (Pexels image/video w/ Ken Burns), crossfades, 0–3s hook card + CTA end card + progress bar.
+- `remotion/` shell: size-parametric compositions (1080×1920@30fps default; also 1080×1350, 1080×1080 per §4.4.2); props `{script, scenes, audioSrc, words, brandTokens, preset, canvas}`; preset components imported dynamically from `/templates/reels/<preset>`; per-scene B-roll (multi-source §4.5) with Ken Burns, crossfades, 0–3s hook card + CTA end card + progress bar (preset-dependent).
+### 4.4 Short-Form Video Renderer (Remotion)
+
+**Goal (PRD FR-3):** 1080×1920 MP4 with synchronized VO + word-by-word kinetic typography, no video editor.
+
+- `render_video/renderer.py` (`VideoReelRenderer`, M3): accepts `{blueprint, preset, flags, platform}`; resolves platform canvases (§4.4.2), enforces guardrails (§4.6), builds Remotion input props `{script, scenes, audioSrc, words, brandTokens, preset, canvas}`, shells `npx remotion render`, asserts MP4 (resolution, duration ±0.5s of VO, `ffprobe` audio track), writes `meta.json`.
 - Caption engine (`remotion/src/captioning/`): Faster-Whisper `words[]` → karaoke active-word highlight, `maxWordsPerLine` pagination, safe-area (default 220px) + stroke/shadow for contrast; drift <150ms vs fixture.
-- Audio: Kokoro VO laid precisely; optional ducked background (local file, default off); SHOULD normalize −14 LUFS.
-- CLI: `render-reel --blueprint ... --voice ... --words ...` → `reel-1080x1920.mp4` via `npx remotion render` with progress logs + resumable intermediates; asserts: resolution, duration ±0.5s of VO, `ffprobe` audio-track presence; missing B-roll → gradient fallback (logged, PRD AC-3).
+
+#### 4.4.1 Video Style Presets (M3)
+
+Three preset components under `templates/reels/<preset>/` (`ReelComposition.tsx` + `theme.ts` + `preview.png` + `meta.json {themeId, sizes, version}`), selected via `--preset`:
+
+| Preset | Style | Signature |
+|--------|-------|-----------|
+| `alex-hormozi` | Fast kinetic typography | Word-by-word yellow/green highlight, punchy pop animations, progress bar |
+| `faceless-docu` | Cinematic documentary | Dark gradient overlay, elegant serif typography, slow-zoom (Ken Burns) B-roll |
+| `b-roll-centric` | Visual-first | Content-matching full-bleed background layers, clean bottom-aligned subtitles |
+
+**Hybrid Prompt Customization:** `blueprint.style.presetTweaks` (e.g. `{highlight: "green", pace: "calm"}`) may adjust preset tokens (colors, pacing, caption position) within guardrails — tweaks never change composition geometry, audio routing, or canvas sizes. Unknown tweak keys are ignored with a warning.
+
+#### 4.4.2 Multi-Platform Aspect Ratios (M3)
+
+`--platform` selects canvases; `all` renders every size in one command:
+
+| Flag | Canvases | Use |
+|------|----------|-----|
+| `--platform fb` | 1080×1080 (1:1) + 1080×1920 (9:16) | Facebook Feed + Reels |
+| `--platform ig` | 1080×1350 (4:5) + 1080×1920 (9:16) | Instagram Feed + Reels |
+| `--platform all` | 1080×1080 + 1080×1350 + 1080×1920 | Both feeds + Reels simultaneously |
+
+Preset components are size-parametric (`width`/`height` props); caption safe-areas scale per canvas. Per-canvas outputs + asserts land in `out/<run-id>/<canvas>/`.
+- Audio: Kokoro VO laid precisely; BGM auto-ducked (see §4.5); SHOULD normalize −14 LUFS.
+- CLI: `pulsecraft render reel --blueprint ... --preset alex-hormozi --platform all --brand acme --out out/<run-id>` → per-canvas MP4s via `npx remotion render` with progress logs + resumable intermediates; asserts: resolution, duration ±0.5s of VO, `ffprobe` audio-track presence; missing B-roll → gradient fallback (logged, PRD AC-3).
 - Perf (PRD NFR-2.2): 30s Reel in 1–3 min warm on ref hardware; 60s SHOULD <5min; single-job default; `--fast-draft` (tiny whisper, reduced scale) for iteration; 3s render-smoke in CI (PRD R5).
 
 ### 4.5 Audio & Asset Supply Pipeline
@@ -412,7 +464,116 @@ pulsecraft templates clear --kind reels --id calm-caption --force
 1. **Kokoro TTS → VO:** sentence-aware chunking (≤~500 chars), per-brand voice+speed, concat WAV (≥16kHz), cache key `hash(text+voice+speed)` at `.cache/tts/`; offline after install; `--reuse-cache` default on, `--refresh-assets` to force.
 2. **Faster-Whisper INT8 → timestamps:** `base` default (`--whisper-model` override; `--fast-draft` → `tiny`), CPU INT8; emits `words.json {words:[{word,start,end}], model, estimated}` + `.srt`; `--no-whisper` fallback = uniform timing flagged `estimated:true`; fixture bar ≥95% coverage + monotonic.
 3. **Pexels → visuals:** `PEXELS_API_KEY` via `.env`; blueprint query + orientation filter (portrait preferred for reels), download + resize/compress to `.cache/pexels/<query-hash>/`; `assets/manifest.json {photographer, url, license}` + per-run `ATTRIBUTION.md`; failure path: backoff retry → relaxed query → cache reuse → `assets/fallback/` → continue (hard fail only with `--strict-assets`).
+4. **SFX/BGM + auto-ducking (M3):** CC0 SFX from Freesound API (`FREESOUND_API_KEY`) and BGM from Pixabay Audio API (`PIXABAY_API_KEY`), keyed by blueprint `audioTags[]`; ducking curve — BGM at **15%** under speech, **35%** during pauses (200ms attack/release smoothing); mixed track cached at `.cache/audio/mix-<hash>.wav`. Disabled → stage skipped (see §4.6).
+5. **Multi-source B-roll + local overrides (M3):** providers tried in order Pexels → Pixabay (`PIXABAY_API_KEY`) → Openverse (no key), first hit wins per scene; `[Visual: my-product.png]` script tags load verbatim from `input/visuals/` (path-traversal guarded, missing file = warning + provider fallback).
 - Airplane-mode re-run (post-first-cache) MUST succeed for TTS+Whisper (PRD AC-1); Pexels 429/5xx simulation MUST still render via fallback (PRD AC-2).
+
+### 4.6 Feature Toggles & API Guardrails Engine (M3)
+
+**Rule (normative): system toggles strictly override LLM prompts.** If a feature/API is disabled, blueprint or prompt requests for it are ignored — with a logged warning — never executed.
+
+- `config/features.json` (versioned `features/v1`): `{tts: {kokoro, edgeFallback}, stt: {whisper}, audio: {sfx, bgm, ducking}, media: {pexels, pixabay, openverse, localOverrides}, render: {remotion, dynamicL4}}`, each `{enabled: bool}`; CLI flags (`--no-bgm`, `--no-sfx`, `--no-ducking`, `--feature key=value`) override file values for the run only.
+- `common/feature_flags.py`: `FeatureFlags.load()` + `from_cli(overrides)`; `enabled("audio.bgm")`; `guard(feature, requested) -> bool` (= enabled AND requested); `enforce(blueprint) -> (blueprint, warnings)` strips disabled requests (e.g. `audioTags` dropped when SFX/BGM off, `layout` forced L3-only when `render.dynamicL4` off).
+- Cost/key guardrails: providers without configured keys are auto-treated as disabled (warning, no crash); `--strict-assets` re-escalates to hard fail.
+
+### 4.7 M4 Asset Caching & Hash Indexing Architecture (`.cache/assets/`)
+
+**Goal (PRD FR-4, R2):** disk-backed, content-addressed cache for every remote media/audio byte so repeat runs never re-hit the network.
+
+- `src/pulsecraft/assets/cache.py` — `AssetCache(cache_dir=".cache/assets/")`:
+  - **Hash-indexed layout:** `key = sha256("provider|query|url")[:16]`; bytes stored at `.cache/assets/<provider>/<key><ext>`; sidecar index at `.cache/assets/index.json` mapping `key → {provider, query, url, path, size_bytes, sha256, fetched_at}`.
+  - **Providers covered:** Pexels, Pixabay, Freesound, Openverse (media + audio). `fetch_or_download(provider, query, url, downloader)` checks the index + file existence first (cache **hit** → return path, log `cache: hit`); on **miss** it calls `downloader()` once, writes bytes atomically, updates `index.json`, logs `cache: miss`.
+  - **Duplicate-request prevention:** identical `(provider, query, url)` tuples resolve to the same key; concurrent in-process callers share the on-disk entry — no second HTTP GET.
+  - **Eviction/clearing:** `clear() → int` deletes the whole `.cache/assets/` tree (exposed as `pulsecraft assets clear-cache`); `evict_lru(max_bytes)` drops oldest `fetched_at` entries first (5GB default budget, LRU). `list_cached()` returns index rows for `pulsecraft assets list`.
+  - **Resilience:** corrupt/missing index is rebuilt by directory scan; partial downloads use temp-file + rename; every hit/miss is structured-logged `{stage: "assets.cache", provider, key, hit, ms}`.
+
+### 4.8 M4 Local Asset Directory Indexer (`input/visuals/` + `input/audio/`)
+
+**Goal:** creator-dropped files override remote fetch with zero config; the indexer makes them discoverable + attributable.
+
+- `src/pulsecraft/assets/local_mgr.py` — `index_local_assets(visuals_dir="input/visuals", audio_dir="input/audio")`:
+  - **Auto-index:** recursive scan of both dirs (created with `.gitkeep`; gitignored content). Each file yields `{name, path, kind: image|video|audio, size_bytes, width?, height?, duration_sec?, sample_rate_hz?}`.
+  - **Metadata extraction:** images/video thumbnails via Pillow (`Image.open` → `width/height`); WAV via `wave` (`frames/rate` → `duration_sec/sample_rate_hz`); MP3/OGG/M4A report `duration_sec=None` unless probed (no hard fail — `None` + warning). Unknown extensions are skipped with a warning, never an exception.
+  - **Tag/file matching:** `find_for_tag(tag)` strips `[Visual: ...]` wrappers, matches case-insensitively by basename (`hero.png` == `input/visuals/hero.png`), traversal-guarded (`Path(name).name` containment check — `../escape.png` → `None`). `resolve_local_override()` in `media_fetcher.py` delegates here.
+  - **CLI surfacing:** `pulsecraft assets list` prints indexed local assets (name, kind, dims/duration) alongside cached remote assets from `AssetCache.list_cached()`.
+
+### 4.9 M4 Unified Template Manager Registry (Posts + Reels)
+
+**Goal (PRD FR-5):** one registry interface for Static Post (HTML/Jinja2) and Video Reel (Remotion React) packs with strict manifest contracts.
+
+- `src/pulsecraft/templates_mgr/registry.py` — `UnifiedTemplateRegistry(root="templates")` wraps the M2 `TemplateManager`:
+  - **`list_all_templates() → list[TemplateEntry]`** scans `templates/posts/` (kind `post`) + `templates/reels/` (kind `reel`); each entry `{name, kind, path, meta}` sorted by `(kind, name)`.
+  - **`get_template_schema(name) → dict`** resolves `name` across both kinds (exact match; ambiguous names prefer `post` with a warning); returns `{"name", "kind", "manifest": <meta.json>, "placeholders": {required, optional}}` — for posts from Jinja2 AST + `meta.json`, for reels from `meta.json` (`themeId`, `sizes`/`size`, `tweaks`).
+  - **`validate_all_templates() → dict[str, list[str]]`** runs strict JSON-schema validation (via `jsonschema`, draft 2020-12) on every `meta.json`:
+    - Post manifest: requires `layoutId, displayName, version, engine==jinja2, supportedCanvas[1..], safeAreas, placeholders{required[], optional[]}`.
+    - Reel manifest: requires `themeId, displayName, version, fps>=1` plus `size` or `sizes[]` matching `^\d+x\d+$`.
+    - Plus M2 checks: `index.html`/`style.css` presence (posts) or `ReelComposition.tsx`/`theme.ts` presence (reels), offline-safety (no `https?://`), placeholder declared-vs-used warnings. Clean pack → `[]`; failures are precise (`"<name>: meta.json invalid: 'layoutId' is required"`).
+  - **CLI:** `pulsecraft templates validate` prints per-template PASS/FAIL + warnings and exits nonzero iff any manifest fails strict validation.
+
+### 4.10 M5 End-to-End Campaign Orchestrator (`src/pulsecraft/pipeline/orchestrator.py`)
+
+**Goal (PRD App. C M5):** one deterministic prompt→outputs run wiring M1→M4 with per-stage timings, resume-friendly artifacts, and a clean output bundle.
+
+- `CampaignPipeline` connects all sub-systems (collaborators injectable for headless tests):
+  1. **LLM expand (M1):** `TaskOrchestrator.execute(COPYWRITING, prompt)` → campaign copy, then `execute(JSON_BLUEPRINT_CONVERSION, copy)` → post/reel JSON blueprints. LLM failure → deterministic offline fallback blueprint (seeded hook/sub/cta + script/scenes) so `generate campaign` never hard-crashes without keys; `model_used` + `fallback_taken` recorded.
+  2. **Asset resolve (M4):** every `assets.query` / `scenes[].assetQuery` / `[Visual: ...]` tag goes through `MediaFetcher.fetch_scene()` (Pexels→Pixabay→Openverse→fallback, local `input/visuals/` override first) backed by `AssetCache` (`.cache/assets/`, hit/miss logged). Results land in `assets.json` + `ATTRIBUTION.md`; failures degrade to bundled fallback with warnings (hard fail only if caller passes `strict=True`).
+  3. **Static render (M2):** `StaticPostRenderer.render_post()` with 4-layer resolution (L1 conditionals/L2 loops → L3 catalog `layout` → L4 `PROMPT_EXPANSION` fallback); emits `square-1080x1080.png`, `vertical-1080x1350.png` + `static-meta.json`.
+  4. **Video render (M3):** `VideoReelRenderer.render_reel()` (Kokoro TTS → Whisper timestamps → BGM/SFX ducking 15%/35% → Remotion preset per `--preset`/`--platform`); emits per-canvas MP4s + `reel-meta.json`. Disabled toggles skip stages with warnings (guardrails §4.6).
+  5. **Bundle:** clean `output/<run-id>/` tree — `{blueprint-post.json, blueprint-reel.json, assets.json, ATTRIBUTION.md, *.png, *.mp4, *-meta.json, run-manifest.json}`. `run-manifest.json` = `{run_id, brand, seed, prompt, models, timings_ms, warnings, artifacts}`; `--seed` makes blueprint bytes deterministic.
+- **Failure semantics:** per-stage try/except → warnings + fallback artifacts; full-run failure raises `CampaignError` with actionable hint (`--strict-assets`, `--refresh-assets`, resume path). All paths `pathlib`; all network calls timeout + retry + log.
+
+### 4.11 M5 Unified CLI Architecture
+
+**Rule:** one `pulsecraft` entrypoint; nouns are groups, verbs are commands; every run is reproducible from flags + config.
+
+```bash
+pulsecraft generate campaign --prompt "..." --brand acme --formats png,reel \
+  --preset alex-hormozi --platform all --seed 42 --out output
+pulsecraft models status            # registry + task chains (M1)
+pulsecraft render post --blueprint ... --brand acme --out output/<run-id>
+pulsecraft render reel --blueprint ... --preset ... --platform all
+pulsecraft templates list|inspect|validate
+pulsecraft assets list|clear-cache
+pulsecraft check-models
+```
+
+- `src/pulsecraft/cli.py` — `main` group + `generate` group (`campaign` command builds `CampaignRequest` from flags and runs `CampaignPipeline().run()`); `models`, `render`, `templates`, `assets` groups unchanged from M1–M4. `--formats png|reel|both` selects static/video/both; `--seed` seeds fallback blueprints; `--strict-assets` re-escalates asset fallback to hard fail.
+- `src/pulsecraft/pipeline/` owns orchestration; `cli.py` owns parsing/echo only (thin-wrapper rule, enforced by review).
+
+### 4.12 M6 Liquid Glass Web UI Architecture (Next.js 14 / Tailwind)
+
+**Goal:** Apple HIG / visionOS-inspired translucent creator dashboard over the M5 pipeline — same engine, glass face.
+
+- **Stack:** Next.js 14 (App Router) + Tailwind CSS + shadcn/ui primitives + Framer Motion, served from `web/` (dev `npm run dev -- --port 3000`, prod `npm run build && npm run start`). All data comes from the FastAPI backend (§4.13); the UI never shells renderers directly.
+- **Aesthetic tokens (normative):** frosted layers `backdrop-blur-xl bg-slate-900/60 border border-white/10 shadow-2xl`; floating pill controls (`rounded-full`); ambient neon accent YGT `#A3E635` (glows, active states, progress); spring physics `stiffness: 300, damping: 30` on cards/modals; Bento box widget grids (`grid-cols-12`, 8px radius scale).
+- **60 FPS rule:** gallery + preview images ship as low-res WebP thumbnails first (`/_next/image` + `loading="lazy"`), full PNG/MP4 only on viewport intersect / click-to-play; list virtualization beyond 50 cards.
+- **Layout components (`web/components/`):**
+  1. `CampaignStudio` — prompt textarea, brand select (`/api/brands`), platform switches FB/IG/All, preset picker (Hormozi, Docu, B-Roll + kinetic-bold), seed + formats; POSTs `/api/campaigns` and polls `/api/jobs/{id}`.
+  2. `InteractivePreviewGallery` — Bento grid of live Jinja2 HTML cards (iframe sandbox) + Remotion `<video>` player with subtitle/BGM sync readout from `words.json` sidecar.
+  3. `FeatureTogglePanel` — categorized switches mirroring `config/features.json`: Default Processing Engines (Kokoro TTS / Whisper STT status badges, read-mostly), Graphics APIs (Pexels, Pixabay, Openverse toggles), Audio APIs (Freesound SFX, Pixabay Audio toggles). Writes go to `/api/features`.
+  4. `TemplateInspectorModal` — per-template live preview hydrating badge placeholders (`[Headline Here]`, `[Hook Here]`, `[CTA Here]`, `[Bullet 1..n]`, `[Image Here]`) via `/api/templates/{name}/preview`; shows required/optional schema table.
+
+### 4.13 M6 Performance Engine (Intel i5 11th Gen + 20GB RAM)
+
+**Constraint (normative):** the reference box renders Playwright + Remotion with browser tabs open; the web layer MUST NOT throttle it.
+
+- **Decoupled async topology:** FastAPI (port **8000**, `src/pulsecraft/web/`) owns compute; Next.js (port **3000**, `web/`) owns glass. Browser talks only to Next.js route handlers, which proxy to `http://localhost:8000`. No renderer ever runs in the Node process.
+- **`BackgroundJobQueue` (`src/pulsecraft/web/queue.py`), Max Concurrency = 1:** single-worker FIFO (`asyncio.Lock` + `asyncio.Queue`); `enqueue()` returns `job_id` immediately; the worker runs one `CampaignPipeline.run()` (or static/reel render) at a time and records `{status: queued|running|done|failed, timings_ms, artifacts}`. A second submit waits — never parallel-renders on i5.
+- **Low-res WebP asset proxies:** `/api/assets/thumb?path=...` returns Pillow-downscaled WebP (`max 480px`, `quality 60`) with `Cache-Control: public, max-age=86400`; gallery scrolls thumbnails, full assets load on demand.
+- **`gc.collect()` memory release:** after every render/campaign task the worker (in `finally`) calls `gc.collect()` plus `torch.cuda.empty_cache()` guarded by try/except (PyTorch/Whisper caches purged even on failure); peak RSS logged per job for NFR-1 audit.
+- **REST surface (`src/pulsecraft/web/app.py`):** `GET /api/health`, `GET /api/brands`, `GET /api/templates`, `GET /api/templates/{name}/preview`, `GET /api/features` + `PATCH /api/features`, `GET /api/assets`, `POST /api/campaigns` → `{job_id}`, `GET /api/jobs/{id}`, `GET /api/assets/thumb`. All endpoints wrap CLI/pipeline calls (thin-wrapper rule); validation via Pydantic; CORS open for `localhost:3000` only.
+
+### 4.14 M6 Categorized Feature Toggles UI Contract
+
+`config/features.json` (`features/v1`) stays the single source of truth; the UI groups it for humans:
+
+| Category | Toggles | Widget |
+|----------|---------|--------|
+| Default Processing Engines | `tts.kokoro`, `stt.whisper` (+ `tts.edgeFallback` badge) | status badges (Connected/Failed/Unknown), switches disabled when provider key missing |
+| Graphics APIs | `media.pexels`, `media.pixabay`, `media.openverse`, `media.localOverrides` | switches; off → blueprint visual asks ignored with warning (§4.6) |
+| Audio APIs | `audio.sfx`, `audio.bgm`, `audio.ducking` | switches; off → SFX/BGM skipped, VO stays full volume |
+
+`PATCH /api/features {path, enabled}` validates dotted paths via `FeatureFlags.set()` and persists; unknown paths → 422 with precise error.
 
 ---
 

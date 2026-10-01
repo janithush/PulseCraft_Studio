@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --neon: #a3e635;
+}
+
+body {
+  background: radial-gradient(1200px 800px at 20% -10%, #1e293b 0%, #020617 55%, #000 100%);
+  color: #e2e8f0;
+}
+
+.glass {
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  background: rgb(15 23 42 / 0.6);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.5);
+}
+
+.glow-neon {
+  box-shadow: 0 0 24px rgb(163 230 53 / 0.35), 0 0 64px rgb(163 230 53 / 0.12);
+}

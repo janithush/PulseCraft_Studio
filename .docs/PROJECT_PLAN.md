@@ -66,8 +66,9 @@ Milestones are **acceptance-gated**: a milestone is done only when all mapped ep
 | M2.2 | Token pipeline (`merge.py` `_base.json` inheritance + `tokens.py` → `tokens.css`) + `validate-brand` | Bad hex/missing font fails with precise errors; base fallback warns, never crashes |
 | M2.3 | Playwright renderer (single Chromium, 1080×1080 + 1080×1350, font-ready + `networkidle`, `file://` assets, 1 retry) + PNG header asserts | Both PNGs byte-exact dims (Pillow/sharp); 120-char hook never overflows; golden snapshots approved |
 | M2.4 | Brand-swap proof: same blueprint × 2 brands → correctly themed outputs, zero engine diff | Snapshot diff test green |
+| M2.5 | 4-layer layout strategy (L1 conditionals auto-hide, L2 loops for bullets/hashtags, L3 pre-built variants, L4 `PROMPT_EXPANSION` HTML fallback) + Visual Template Inspector (`templates inspect` with badge-tag preview + required/optional schema) | `inspect bold-hook-split` shows schema table + preview HTML; unknown layout triggers L4 with layer logged in manifest |
 
-**Exit demo:** `render-static --blueprint fixture --brand acme` → 2 exact PNGs + `meta.json` (dims, hashes, ms) in <15s/size warm; `init-brand --slug demo` passes smoke.
+**Exit demo:** `render post --blueprint fixture --brand acme` → 2 exact PNGs + `meta.json` (dims, hashes, ms) in <15s/size warm; `templates inspect bold-hook-split` renders badge-tag preview; `init-brand --slug demo` passes smoke.
 
 ### M3: Short-Form Video Reel Engine (Remotion, Kokoro TTS, Faster-Whisper Captions)
 
@@ -78,38 +79,56 @@ Milestones are **acceptance-gated**: a milestone is done only when all mapped ep
 |---|-------------|-----------|
 | M3.1 | Kokoro TTS wrapper (sentence-aware ≤500-char chunks, brand voice+speed, ≥16kHz concat WAV, `hash(text+voice+speed)` cache) | Airplane-mode re-run succeeds from cache |
 | M3.2 | Faster-Whisper INT8 (`base` default, `--whisper-model` override, `--fast-draft`→`tiny`, `--no-whisper` uniform fallback `estimated:true`) → `words.json` + `.srt` | Fixture ≥95% coverage, monotonic, drift <150ms |
-| M3.3 | Remotion `ReelComposition` (1080×1920@30fps, `{script,scenes,audioSrc,words,brandTokens}`) + caption engine (karaoke, `maxWordsPerLine`, safe-area 220px) + hook/CTA cards + Ken Burns B-roll | 3s fixture smoke renders with audible VO + visible highlight |
+| M3.3 | Remotion `ReelComposition` (size-parametric 1080×1920/1350/1080 @30fps, `{script,scenes,audioSrc,words,brandTokens,preset,canvas}`) + caption engine (karaoke, `maxWordsPerLine`, safe-area 220px) + hook/CTA cards + Ken Burns B-roll | 3s fixture smoke renders with audible VO + visible highlight |
 | M3.4 | Post-render asserts (resolution, duration ±0.5s of VO, `ffprobe` audio track) + `--fast-draft` mode | 30s Reel in 1–3 min warm on ref hw; missing B-roll falls back to gradient with log |
+| M3.5 | Style presets (`alex-hormozi`, `faceless-docu`, `b-roll-centric` + hybrid `presetTweaks`) + `--platform fb\|ig\|all` canvases + SFX/BGM auto-ducking (15% speech / 35% pause) + guardrailed `render reel` CLI | `--preset` switches signature styles; `--platform all` emits 1080² + 1080×1350 + 1080×1920; disabled toggles strip requests with warnings |
 
-**Exit demo:** `render-reel` on 30s fixture → 1080×1920 MP4 + probe report; frame sample shows active-word highlight.
+**Exit demo:** `render reel` on 30s fixture → per-platform MP4s + probe report; frame sample shows active-word highlight.
 
 ### M4: Free Asset Supply Pipeline Integration (Pexels API & Decoupled /templates)
 
 **Objective:** Zero-subscription visuals fully integrated with cache/resume and template decoupling.
-**Maps to:** Epic 5 · PRD FR-4 (Pexels), FR-5, R2 · ARCH §4.5, §4.2.
+**Maps to:** Epic 5 · PRD FR-4 (Pexels), FR-5, R2 · ARCH §4.5, §4.2, §4.7–§4.9.
 
 | # | Deliverable | Done when |
 |---|-------------|-----------|
-| M4.1 | Pexels fetcher (`PEXELS_API_KEY` via `.env`, orientation filter, resize/compress, `.cache/pexels/<query-hash>/`, `assets/manifest.json` + per-run `ATTRIBUTION.md`) | Manifest records photographer/URL/license for every asset |
+| M4.1 | Multi-source fetcher (Pexels → Pixabay → Openverse order, `PEXELS_API_KEY`/`PIXABAY_API_KEY` via `.env`, Openverse keyless; orientation filter, resize/compress, `.cache/<provider>/<query-hash>/`, `assets/manifest.json` + per-run `ATTRIBUTION.md`) + local overrides (`[Visual: file]` → `input/visuals/`, traversal-guarded) | Manifest records photographer/URL/license for every asset; local tag bypasses network |
 | M4.2 | Failure tree (backoff retry → relaxed query → cache reuse → `assets/fallback/` → continue; hard fail only `--strict-assets`) + LRU eviction >5GB + `--reuse-cache`/`--refresh-assets` | Simulated 429/5xx still renders via fallback with warning |
 | M4.3 | Template manager GA (`templates add/modify/clear/list/preview` for `posts` + `reels`; offline-safety lint: no remote CDN, bundled fonts) | Add→preview→clear round-trip without engine diff; `templates/reels` theme hot-swappable |
+| M4.4 | Asset Caching Engine (`src/pulsecraft/assets/cache.py`): disk-backed hash-indexed cache in `.cache/assets/` for Pexels/Pixabay/Freesound/Openverse bytes; `AssetCache` with hit/miss logging, duplicate-request suppression, `index.json`, `clear()`/`evict_lru()`; CLI `pulsecraft assets clear-cache` | Repeat fetch with same `(provider, query, url)` performs zero HTTP GETs; `clear-cache` empties `.cache/assets/` |
+| M4.5 | Local Asset Indexer (`src/pulsecraft/assets/local_mgr.py`): auto-index `input/visuals/` + `input/audio/` with Pillow/wave metadata (dims, duration/sample-rate) + traversal-guarded tag matching; CLI `pulsecraft assets list` shows local + cached remote | Dropped `hero.png`/`bed.mp3` appear in `assets list` with correct kind + metadata; `[Visual: ../escape]` → `None` |
+| M4.6 | Unified Template Registry (`src/pulsecraft/templates_mgr/registry.py`): single `list_all_templates()` / `get_template_schema(name)` / `validate_all_templates()` over `templates/posts/` + `templates/reels/` with strict `meta.json` JSON-schema validation; CLI `pulsecraft templates validate` | All 2 post + 4 reel packs validate clean; broken manifest fails with precise error + nonzero exit |
 
-**Exit demo:** airplane-mode re-run green; Pexels-outage simulation green via fallback; new theme added live and rendered without code change.
+**Exit demo:** airplane-mode re-run green; Pexels-outage simulation green via fallback; new theme added live and rendered without code change; `assets list` shows local + cached rows; `templates validate` passes on all packs.
 
 ### M5: End-to-End CLI Integration, Quality Assurance, and Final Polish
 
 **Objective:** One-command prompt→outputs, hardened and documented.
-**Maps to:** All Epics · PRD NFR-1…NFR-4, App. C M5 · ARCH §5, §6, App. A.
+**Maps to:** All Epics · PRD NFR-1…NFR-4, App. C M5 · ARCH §4.10–§4.11, §5, §6, App. A.
 
 | # | Deliverable | Done when |
 |---|-------------|-----------|
-| M5.1 | `pulsecraft generate --brand X --prompt ... --formats png,reel` (orchestrates M1→M4 + `run-manifest.json` + per-stage timings + `--seed` determinism + `--jobs` static parallelism) | Same seed → byte-comparable blueprint; visually stable renders |
+| M5.1 | `pulsecraft generate campaign --prompt ... --brand X --formats png,reel --preset ... --platform all --seed N --out output` (`src/pulsecraft/pipeline/orchestrator.py` `CampaignPipeline`: M1 LLM expand → M4 asset resolve + cache → M2 static 4-layer render → M3 reel TTS/timestamp/ducking/preset render → `output/<run-id>/` bundle + `run-manifest.json` + timings + `--seed` determinism) | Same seed → byte-comparable blueprints; `output/<run-id>/` contains blueprints + assets.json + PNGs + MP4s + manifests with zero manual steps (mocked renderers in CI) |
 | M5.2 | QA hardening: contrast <4.5:1 warnings, SRT sidecar + burned-in captions, actionable errors ("Pexels 429 → fallback; retry --refresh-assets"), temp cleanup | E2E on ref hw meets NFR-2 (static <60s warm E2E; 30s Reel 1–3 min) without freeze/OOM |
 | M5.3 | Docs/runbook (`README` quickstart, brand onboarding <30 min guide, `--fast-draft` iteration guide, model-download sizes) + CI green + coverage gates | New hire onboards a brand and ships PNGs+MP4 in <30 min following runbook only |
+| M5.4 | Unified CLI GA (`generate campaign`, `models status`, `render post|reel`, `templates list|inspect|validate`, `assets list|clear-cache`) + `tests/unit/test_campaign_pipeline.py` + `tests/integration/test_e2e_campaign.py` (mocked collaborators, offline green) | `pulsecraft --help` lists all five groups; new tests green offline |
 
-**Exit demo (release gate):** live prompt → `out/<run-id>/{square,vertical,reel,meta,manifest,ATTRIBUTION}` + CI badge green + runbook followed verbatim.
+**Exit demo (release gate):** live prompt → `output/<run-id>/{blueprints,assets,PNGs,MP4s,meta,manifest,ATTRIBUTION}` + CI badge green + runbook followed verbatim.
 
-**Roadmap summary:** `M0 (week 1, unblocks all) → M1 + M2 (parallel after M0) → M3 (needs M1) → M4 (needs M2/M3) → M5 (needs all)`. M1/M2 can run in parallel; M4 integrates M2+M3 outputs.
+### M6: Liquid Glass Web UI + Hardware-Optimized Worker Queue
+
+**Objective:** Glass dashboard over the M5 engine that stays smooth on Intel i5 11th Gen + 20GB RAM.
+**Maps to:** All Epics · PRD NFR-1/NFR-2 · ARCH §4.12–§4.14.
+
+| # | Deliverable | Done when |
+|---|-------------|-----------|
+| M6.1 | FastAPI server (`src/pulsecraft/web/`: `app.py` REST wrapping CLI/pipeline, `queue.py` `BackgroundJobQueue` max-concurrency 1, `memory.py` `gc.collect()` release hook, `thumbs.py` WebP proxy) on port 8000 | `GET /api/health` green; two rapid `POST /api/campaigns` serialize (never parallel); `gc.collect()` asserted after each job in `tests/unit/test_web_api.py` |
+| M6.2 | Next.js 14 Liquid Glass UI (`web/`: Tailwind + shadcn/ui + Framer Motion `stiffness 300/damping 30`, `#A3E635` glow, `backdrop-blur-xl bg-slate-900/60 border-white/10`) with `CampaignStudio`, `InteractivePreviewGallery` (lazy WebP), `FeatureTogglePanel` (3 categories), `TemplateInspectorModal` (`[Headline Here]`/`[Hook Here]` badges) | `npm run build` clean; gallery scrolls thumbnails before full assets |
+| M6.3 | QA: `tests/unit/test_web_api.py` (health, features get/patch, templates, campaign enqueue + job poll, thumb proxy, concurrency-1 proof, gc hook) + `ruff check` + `pytest` 100% backend pass | New tests green offline with mocked pipeline |
+
+**Exit demo:** `uvicorn` :8000 + `npm run dev` :3000 → prompt in CampaignStudio → job completes → glass gallery shows PNGs/MP4 + toggles flip live.
+
+**Roadmap summary:** `M0 (week 1, unblocks all) → M1 + M2 (parallel after M0) → M3 (needs M1) → M4 (needs M2/M3) → M5 (needs all) → M6 (needs M5)`. M1/M2 can run in parallel; M4 integrates M2+M3 outputs.
 
 ---
 
@@ -150,6 +169,7 @@ Each epic lists **features** (shippable vertical slices), primary specs, and mil
 | E3-F2 Brand system (static) | `_base.json` inheritance, `merge.py`, `tokens.css`, `validate-brand` | `brands/`, `schemas/brand.schema.json` |
 | E3-F3 Playwright renderer + asserts | Single instance, exact viewports, font-ready wait, `file://` assets, header asserts, `meta.json` | `src/pulsecraft/render_static/` |
 | E3-F4 Safety + swap proof | Auto-fit/clamp, safe-area, contrast warn, brand-swap snapshot test | `tests/snapshots/`, `tests/e2e/test_static.py` |
+| E3-F5 Dynamic layers + inspector | L1 conditionals, L2 loops, L4 LLM HTML fallback via `PROMPT_EXPANSION`, `inspect_template()` badge-tag preview + placeholder schema | `src/pulsecraft/templates_mgr/manager.py`, `src/pulsecraft/render_static/renderer.py` |
 
 ### Epic 4: Short-Form Video Engine (`/templates/reels/`, Remotion React, Kokoro TTS, Faster-Whisper INT8, Kinetic typography)
 
@@ -228,6 +248,14 @@ Format: **Given-When-Then + explicit acceptance criteria (AC) + mapped epic/feat
 - **Given** `brands/_template/`, **When** I run `init-brand --slug demo` and edit colors/fonts/logo/voice, **Then** `validate-brand` passes and the golden smoke renders themed outputs with zero engine diff.
 - AC: (1) Invalid brand (bad hex/missing font) fails with precise errors; (2) same prompt × 2 brands → themed diff; (3) onboarding <30 min per runbook. *→ E3-F2. Covers PRD G3.*
 
+**US-3.4 Dynamic layers degrade gracefully**
+- **Given** a blueprint with empty `sub`/`cta`, a 3-item `bullets[]`, and an unknown `layout` id, **When** I render, **Then** L1 hides the empty sections, L2 iterates the bullets, and L4 generates fallback HTML via `PROMPT_EXPANSION` with `layer: L4` logged in the manifest.
+- AC: (1) No empty-section whitespace gaps; (2) all bullets rendered; (3) L4 output passes offline-safety lint + dimension asserts. *→ E3-F5.*
+
+**US-3.5 Inspect template before writing copy**
+- **Given** template `bold-hook-split`, **When** I run `templates inspect bold-hook-split`, **Then** I see a badge-tag preview (`[Headline Here]`, …) plus a required/optional placeholder schema table.
+- AC: (1) Required vs optional derived from Jinja2 AST + `meta.json`; (2) undeclared/unused vars warn without failing; (3) preview uses production CSS. *→ E3-F5.*
+
 ### Epic 4 — Short-Form Video Engine
 
 **US-4.1 Cached voiceover with resume**
@@ -239,8 +267,12 @@ Format: **Given-When-Then + explicit acceptance criteria (AC) + mapped epic/feat
 - AC: (1) Fixture ≥95% words covered; (2) drift <150ms; (3) `--no-whisper` yields `estimated:true` uniform timing + flag in manifest. *→ E4-F2. Covers PRD R3.*
 
 **US-4.3 Reel renders to spec with fallbacks**
-- **Given** blueprint + voice + words + theme `kinetic-bold`, **When** I run `render-reel`, **Then** `reel-1080x1920.mp4` passes resolution, duration ±0.5s, and `ffprobe` audio-track checks.
+- **Given** blueprint + voice + words + preset `alex-hormozi` + `--platform all`, **When** I run `render reel`, **Then** 1080×1080 + 1080×1350 + 1080×1920 MP4s pass resolution, duration ±0.5s, and `ffprobe` audio-track checks.
 - AC: (1) 30s fixture in 1–3 min warm on ref hw; (2) missing B-roll uses gradient + log; (3) `--fast-draft` renders faster preview. *→ E4-F3/F4. Covers PRD R5.*
+
+**US-4.4 Presets, ducking, and toggles behave**
+- **Given** a blueprint with `audioTags` + `presetTweaks` and `--preset faceless-docu`, **When** I run `render reel --no-bgm`, **Then** BGM/SFX stages are skipped (toggle overrides prompt), VO stays full volume, and warnings list the stripped requests.
+- AC: (1) Preset switch changes caption/overlay signature; (2) duck curve 15% speech / 35% pause when enabled; (3) hybrid tweaks never alter geometry. *→ E4-F3 + §4.6.*
 
 ### Epic 5 — Assets & Templates
 

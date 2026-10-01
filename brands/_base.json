@@ -1,0 +1,16 @@
+{
+  "name": "acme",
+  "slug": "acme",
+  "colors": {
+    "primary": "#FF4D00",
+    "secondary": "#1A1A1A",
+    "accent": "#FFD60A",
+    "bg": "#111111",
+    "text": "#FFFFFF"
+  },
+  "fonts": { "display": "Inter", "body": "Inter" },
+  "logo": "brands/acme-logo.png",
+  "voice": { "id": "kokoro-default", "speed": 1.0 },
+  "tone": "bold, hook-first",
+  "ctaDefaults": "Save + Follow"
+}

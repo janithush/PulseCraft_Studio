@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="./style.css" />
+    <title>{{ hook }}</title>
+  </head>
+  <body class="canvas-{{ canvas }}">
+    <main class="canvas" data-layout="bold-hook-split">
+      {% if badge %}
+      <div class="badge">{{ badge }}</div>
+      {% endif %}
+      <section class="hook">{{ hook }}</section>
+      {% if sub %}
+      <section class="sub">{{ sub }}</section>
+      {% endif %}
+      {% if bullets %}
+      <ul class="bullets">
+        {% for bullet in bullets %}
+        <li>{{ bullet }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if cta %}
+      <footer class="cta">{{ cta }}</footer>
+      {% endif %}
+      {% if hashtags %}
+      <div class="hashtags">
+        {% for tag in hashtags %}
+        <span>{{ tag }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </main>
+  </body>
+</html>

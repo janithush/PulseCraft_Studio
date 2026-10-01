@@ -1,0 +1,41 @@
+/* minimal-type — centered typographic layout, offline-safe */
+body {
+  margin: 0;
+}
+.canvas-square .canvas {
+  width: 1080px;
+  height: 1080px;
+}
+.canvas-vertical .canvas {
+  width: 1080px;
+  height: 1350px;
+}
+.canvas {
+  box-sizing: border-box;
+  padding: 80px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  background: var(--brand-bg, #fafafa);
+  color: var(--brand-text, #111111);
+  font-family: var(--brand-body, system-ui, sans-serif);
+  overflow: hidden;
+}
+.hook {
+  font-size: 88px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.sub {
+  font-size: 44px;
+  opacity: 0.85;
+}
+.bullets {
+  font-size: 38px;
+  list-style-position: inside;
+}
+.cta {
+  font-size: 38px;
+  font-weight: 700;
+}
