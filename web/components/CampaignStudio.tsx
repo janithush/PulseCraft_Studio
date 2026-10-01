@@ -10,15 +10,14 @@ const PLATFORMS = ["fb", "ig", "all"];
 export default function CampaignStudio({
   onDone,
   brand,
-  onBrandChange,
-  brands,
+  prompt,
+  onPromptChange,
 }: {
   onDone: (jobId: string) => void;
   brand: string;
-  onBrandChange: (slug: string) => void;
-  brands: string[];
+  prompt: string;
+  onPromptChange: (next: string) => void;
 }) {
-  const [prompt, setPrompt] = useState("");
   const [platform, setPlatform] = useState("all");
   const [preset, setPreset] = useState(PRESETS[0]);
   const [busy, setBusy] = useState(false);
@@ -57,31 +56,29 @@ export default function CampaignStudio({
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
       className="glass rounded-3xl p-6 col-span-12 lg:col-span-7"
+      data-testid="campaign-studio"
     >
       <h2 className="text-xl font-semibold text-white">Campaign Studio</h2>
       <textarea
         value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
+        onChange={(e) => onPromptChange(e.target.value)}
         placeholder="3 morning habits that burn fat…"
         rows={4}
+        data-testid="campaign-prompt"
         className="mt-4 w-full rounded-2xl bg-white/5 border border-white/10 p-4 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#A3E635]"
       />
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <select
-          value={brand}
-          onChange={(e) => onBrandChange(e.target.value)}
-          className="rounded-full bg-white/5 border border-white/10 px-4 py-2 text-sm"
+        <span
+          data-testid="campaign-brand"
+          className="rounded-full bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-200"
         >
-          {brands.map((slug) => (
-            <option key={slug} value={slug}>
-              {slug}
-            </option>
-          ))}
-        </select>
+          {brand || "(no brand)"}
+        </span>
         {PLATFORMS.map((p) => (
           <button
             key={p}
             onClick={() => setPlatform(p)}
+            data-testid={`platform-${p}`}
             className={`rounded-full px-4 py-2 text-sm border transition ${
               platform === p
                 ? "bg-[#A3E635] text-slate-950 border-transparent glow-neon"
@@ -108,6 +105,7 @@ export default function CampaignStudio({
       <button
         onClick={submit}
         disabled={busy || !prompt.trim()}
+        data-testid="generate-btn"
         className="mt-5 rounded-full bg-[#A3E635] px-6 py-2.5 text-sm font-semibold text-slate-950 disabled:opacity-40 glow-neon"
       >
         {busy ? "Rendering…" : "Generate campaign"}

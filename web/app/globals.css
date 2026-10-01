@@ -22,3 +22,32 @@ body {
 .glow-neon {
   box-shadow: 0 0 24px rgb(163 230 53 / 0.35), 0 0 64px rgb(163 230 53 / 0.12);
 }
+
+.badge-ok {
+  color: #a3e635;
+  border-color: rgb(163 230 53 / 0.5);
+  background: rgb(163 230 53 / 0.08);
+}
+
+.badge-err {
+  color: #f87171;
+  border-color: rgb(248 113 113 / 0.4);
+  background: rgb(248 113 113 / 0.08);
+}
+
+.badge-checking {
+  color: #fde047;
+  border-color: rgb(253 224 71 / 0.4);
+  background: rgb(253 224 71 / 0.08);
+  animation: pulse-yellow 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse-yellow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}

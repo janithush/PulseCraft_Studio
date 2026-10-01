@@ -314,5 +314,16 @@ def templates_validate() -> None:
     click.echo(f"validated {len(results)} template(s): all clean")
 
 
+@main.command(name="doctor")
+def doctor() -> None:
+    """Run the Phase-2 pre-flight auditor (packages, binaries, env, dirs)."""
+    from pulsecraft.common.preflight import run_preflight
+
+    result = run_preflight(strict=False)
+    click.echo(result.diagnostic())
+    if not result.ok:
+        raise click.ClickException("pre-flight failed (see diagnostic above)")
+
+
 if __name__ == "__main__":
     main()

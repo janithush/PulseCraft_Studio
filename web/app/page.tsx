@@ -5,7 +5,7 @@ import CampaignStudio from "../components/CampaignStudio";
 import InteractivePreviewGallery, { type GalleryItem } from "../components/InteractivePreviewGallery";
 import FeatureTogglePanel from "../components/FeatureTogglePanel";
 import TemplateInspectorModal from "../components/TemplateInspectorModal";
-import BrandManager from "../components/BrandManager";
+import BrandSelector from "../components/BrandSelector";
 import ModelPriorityPanel from "../components/ModelPriorityPanel";
 import ResourcePlayground from "../components/ResourcePlayground";
 import { galleryKind, getJob, listBrands } from "../lib/api";
@@ -14,13 +14,20 @@ export default function Home() {
   const [items, setItems] = useState<GalleryItem[]>([]);
   const [brands, setBrands] = useState<string[]>(["acme"]);
   const [brand, setBrand] = useState("acme");
+  const [prompt, setPrompt] = useState("");
 
   const refreshBrands = useCallback(async () => {
     try {
       const { brands: slugs } = await listBrands("");
       if (slugs.length > 0) {
-        setBrands(slugs);
-        setBrand((prev) => (slugs.includes(prev) ? prev : slugs[0]));
+        setBrands((prev) => {
+          const merged = Array.from(new Set([...slugs, ...prev]));
+          return merged;
+        });
+        setBrand((prev) => {
+          if (slugs.includes(prev) || prev) return prev;
+          return slugs[0];
+        });
       }
     } catch {
       // keep defaults when the backend is unreachable
@@ -30,6 +37,21 @@ export default function Home() {
   useEffect(() => {
     refreshBrands();
   }, [refreshBrands]);
+
+  function handleSelectBrand(slug: string) {
+    setBrand(slug);
+    setBrands((prev) => (prev.includes(slug) ? prev : [...prev, slug]));
+  }
+
+  function handleNewCampaign() {
+    // Reset clears ONLY the prompt textarea, preserving active Brand.
+    setPrompt("");
+  }
+
+  function handleInject(text: string) {
+    // Strict append mode: new line, never overwrite.
+    setPrompt((prev) => (prev.trim() ? `${prev}\n${text}` : text));
+  }
 
   async function collectJobItems(jobId: string): Promise<GalleryItem[]> {
     let status = "queued";
@@ -44,10 +66,11 @@ export default function Home() {
         urls = result.artifact_urls ?? {};
       }
     }
+    // Clean metadata: never surface raw job hashes / temp filenames in labels.
     return Object.entries(urls)
       .map(([key, url]) => {
         const media = galleryKind(url);
-        return media ? { src: url, kind: media, label: `${jobId} · ${key}` } : null;
+        return media ? { src: url, kind: media, label: key } : null;
       })
       .filter((item): item is GalleryItem => item !== null);
   }
@@ -76,10 +99,27 @@ export default function Home() {
         </div>
       </header>
       <div className="grid grid-cols-12 gap-4">
-        <CampaignStudio onDone={handleDone} brand={brand} onBrandChange={setBrand} brands={brands} />
-        <InteractivePreviewGallery items={items} />
-        <BrandManager brands={brands} selected={brand} onSelect={setBrand} onRefresh={refreshBrands} />
-        <ResourcePlayground brand={brand} onResult={(next) => setItems((prev) => [...prev, ...next])} />
+        <CampaignStudio
+          onDone={handleDone}
+          brand={brand}
+          prompt={prompt}
+          onPromptChange={setPrompt}
+        />
+        <InteractivePreviewGallery
+          items={items}
+          onRemove={(idx) => setItems((prev) => prev.filter((_, i) => i !== idx))}
+        />
+        <BrandSelector
+          brands={brands}
+          selected={brand}
+          onSelect={handleSelectBrand}
+          onReset={handleNewCampaign}
+        />
+        <ResourcePlayground
+          brand={brand}
+          onResult={(next) => setItems((prev) => [...prev, ...next])}
+          onInject={handleInject}
+        />
         <ModelPriorityPanel />
         <FeatureTogglePanel />
       </div>

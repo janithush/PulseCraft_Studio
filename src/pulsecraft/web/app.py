@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import mimetypes
+import os
 import re
 import uuid
 from pathlib import Path
@@ -233,6 +234,23 @@ def create_app(
     job_queue: BackgroundJobQueue = (
         queue if queue is not None else BackgroundJobQueue(runner=_runner)
     )
+
+    # Phase 2 — Pre-flight auditor (hard-block on missing deps, per V2 protocol).
+    # Bypass with PULSECRAFT_SKIP_PREFLIGHT=1 (tests / local UI dev without keys).
+    # Pytest auto-bypasses unless PULSECRAFT_FORCE_PREFLIGHT=1 (keeps unit tests green).
+    import sys
+
+    skip = os.environ.get("PULSECRAFT_SKIP_PREFLIGHT", "").strip().lower() in ("1", "true", "yes")
+    under_pytest = "pytest" in sys.modules or "PYTEST_CURRENT_TEST" in os.environ
+    force = os.environ.get("PULSECRAFT_FORCE_PREFLIGHT", "").strip().lower() in ("1", "true", "yes")
+    if not skip and not (under_pytest and not force):
+        from pulsecraft.common.preflight import PreflightError, run_preflight
+
+        try:
+            run_preflight(root=Path.cwd(), strict=True)
+        except PreflightError:
+            logger.error("❌ Pre-flight Failed: blocking FastAPI startup (see diagnostic above)")
+            raise
 
     # NOTE: endpoint body models (CampaignIn/FeaturePatch) live at module level
     # so FastAPI can resolve annotations on Python 3.14 (PEP 649 lazy eval).
