@@ -7,6 +7,7 @@ Subprocess + network collaborators are injectable so unit tests run headless.
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import subprocess
 import time
@@ -16,6 +17,8 @@ from pathlib import Path
 from typing import Any
 
 from pulsecraft.common.feature_flags import FeatureFlags
+
+logger = logging.getLogger(__name__)
 
 PLATFORM_CANVASES: dict[str, list[str]] = {
     "fb": ["1080x1080", "1080x1920"],
@@ -195,7 +198,15 @@ class VideoReelRenderer:
             warnings.append("toggle 'tts.kokoro' disabled: skipping voiceover")
             return None, [], None, True, warnings
         tts = self._tts or self._default_tts()
-        voice_path, _hit = tts.synthesize(script_text, voice=voice_id)
+        from pulsecraft.tts.kokoro import TTSError
+
+        try:
+            voice_path, _hit = tts.synthesize(script_text, voice=voice_id)
+        except TTSError as exc:
+            msg = "voiceover unavailable; proceeding without voiceover"
+            logger.warning(msg + f" ({exc})")
+            warnings.append(msg)
+            return None, [], None, True, warnings
         stt = self._stt or self._default_stt()
         no_whisper = not self._flags.enabled("stt.whisper")
         if no_whisper:

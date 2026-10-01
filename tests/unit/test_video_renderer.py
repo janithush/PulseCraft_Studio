@@ -188,3 +188,35 @@ def test_cli_render_reel_reports_files(tmp_path: Path) -> None:
     assert "preset: b-roll-centric platform: ig" in result.output
     assert "1080x1350" in result.output and "1080x1920" in result.output
     assert (tmp_path / "out" / "reel-meta.json").is_file()
+
+
+def test_voice_and_words_degrades_gracefully_on_tts_error(tmp_path: Path) -> None:
+    from pulsecraft.tts.kokoro import TTSError
+
+    tts = MagicMock()
+    tts.synthesize.side_effect = TTSError("engine down")
+    renderer = _renderer(tts=tts, stt=MagicMock())
+    voice_path, words, model, estimated, warnings = renderer._voice_and_words(
+        _blueprint(), "acme", tmp_path, []
+    )
+    assert (voice_path, words, model, estimated) == (None, [], None, True)
+    assert any("voiceover unavailable; proceeding without voiceover" in w for w in warnings)
+
+
+def test_render_reel_completes_without_voiceover_on_tts_error(tmp_path: Path) -> None:
+    from pulsecraft.tts.kokoro import TTSError
+
+    tts = MagicMock()
+    tts.synthesize.side_effect = TTSError("engine down")
+    media = MagicMock()
+    media.fetch_scene.return_value = ({"url": "u", "provider": "pexels", "localPath": ""}, [])
+    audio_fetcher = MagicMock()
+    audio_fetcher.fetch.return_value = ([], [])
+    renderer = _renderer(
+        tts=tts, stt=MagicMock(), media=media, audio_fetcher=audio_fetcher, runner=_ok_runner({})
+    )
+    result = renderer.render_reel(
+        _blueprint(), brand="acme", preset="alex-hormozi", platform="fb", out_dir=tmp_path
+    )
+    assert set(result.files) == {"1080x1080", "1080x1920"}
+    assert any("voiceover unavailable" in w for w in result.warnings)

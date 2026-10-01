@@ -1,6 +1,15 @@
 """PulseCraft Studio CLI entrypoint (M5: unified generate/render/templates/assets)."""
 
+from pathlib import Path
+
 import click
+
+try:  # opt-in .env auto-ingest for CLI commands; never override explicit env
+    from dotenv import load_dotenv
+
+    load_dotenv(dotenv_path=Path.cwd() / ".env", override=False)
+except ImportError:
+    pass
 
 
 @click.group()
@@ -312,6 +321,17 @@ def templates_validate() -> None:
     if failed:
         raise click.ClickException(f"{failed} template(s) failed validation")
     click.echo(f"validated {len(results)} template(s): all clean")
+
+
+@main.command(name="doctor")
+def doctor() -> None:
+    """Run the Phase-2 pre-flight auditor (packages, binaries, env, dirs)."""
+    from pulsecraft.common.preflight import run_preflight
+
+    result = run_preflight(strict=False)
+    click.echo(result.diagnostic())
+    if not result.ok:
+        raise click.ClickException("pre-flight failed (see diagnostic above)")
 
 
 if __name__ == "__main__":
