@@ -107,14 +107,14 @@ export function OrchestratorPanel({
     if (isChecking) return "badge-checking";
     if (status === "connected") return "badge-ok";
     if (status === "failed") return "badge-err";
-    return "badge-checking";
+    return "badge-idle";
   }
 
   function badgeText(status: string, isChecking: boolean) {
     if (isChecking) return "🟡 Checking";
     if (status === "connected") return "🟢 Active";
     if (status === "failed") return "🔴 Error";
-    return "🟡 Checking";
+    return "⚪ Unchecked";
   }
 
   const visibleTasks = tasks.filter((t) => !models || models.tasks[t]);

@@ -17,6 +17,13 @@ from typing import Any
 
 from pydantic import BaseModel
 
+try:  # opt-in .env auto-ingest (uvicorn entrypoint); never override explicit env
+    from dotenv import load_dotenv
+
+    load_dotenv(dotenv_path=Path.cwd() / ".env", override=False)
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
 BRAND_SLUG_RE = re.compile(r"^[a-z0-9-]{2,32}$")

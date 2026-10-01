@@ -42,6 +42,12 @@ body {
   animation: pulse-yellow 1.2s ease-in-out infinite;
 }
 
+.badge-idle {
+  color: #cbd5e1;
+  border-color: rgb(203 213 225 / 0.35);
+  background: rgb(203 213 225 / 0.08);
+}
+
 @keyframes pulse-yellow {
   0%,
   100% {

@@ -1,6 +1,15 @@
 """PulseCraft Studio CLI entrypoint (M5: unified generate/render/templates/assets)."""
 
+from pathlib import Path
+
 import click
+
+try:  # opt-in .env auto-ingest for CLI commands; never override explicit env
+    from dotenv import load_dotenv
+
+    load_dotenv(dotenv_path=Path.cwd() / ".env", override=False)
+except ImportError:
+    pass
 
 
 @click.group()
