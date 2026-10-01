@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess
 import time
@@ -48,7 +49,30 @@ class ReelResult:
     warnings: list[str] = field(default_factory=list)
 
 
+def _resolve_npx() -> str:
+    """Resolve the npx executable.
+
+    On Windows (`os.name == "nt"`) node ships only `npx.CMD`/`npx.ps1`
+    (no `npx.exe`), and `CreateProcess` cannot launch a bare ``"npx"``
+    with ``shell=False`` (``FileNotFoundError: [WinError 2]``). Passing
+    the resolved path (e.g. ``npx.cmd``) lets ``subprocess`` run it
+    directly. Non-Windows platforms keep the plain ``"npx"`` lookup.
+    """
+    if os.name == "nt":
+        resolved = shutil.which("npx")
+        if resolved:
+            return resolved
+        node = shutil.which("node")
+        if node:
+            candidate = Path(node).with_name("npx.cmd")
+            if candidate.is_file():
+                return str(candidate)
+    return "npx"
+
+
 def default_runner(cmd: list[str], cwd: Path) -> Any:
+    if cmd and cmd[0] == "npx":
+        cmd = [_resolve_npx(), *cmd[1:]]
     return subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, timeout=600)
 
 
