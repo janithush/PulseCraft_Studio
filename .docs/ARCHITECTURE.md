@@ -540,6 +540,41 @@ pulsecraft check-models
 - `src/pulsecraft/cli.py` — `main` group + `generate` group (`campaign` command builds `CampaignRequest` from flags and runs `CampaignPipeline().run()`); `models`, `render`, `templates`, `assets` groups unchanged from M1–M4. `--formats png|reel|both` selects static/video/both; `--seed` seeds fallback blueprints; `--strict-assets` re-escalates asset fallback to hard fail.
 - `src/pulsecraft/pipeline/` owns orchestration; `cli.py` owns parsing/echo only (thin-wrapper rule, enforced by review).
 
+### 4.12 M6 Liquid Glass Web UI Architecture (Next.js 14 / Tailwind)
+
+**Goal:** Apple HIG / visionOS-inspired translucent creator dashboard over the M5 pipeline — same engine, glass face.
+
+- **Stack:** Next.js 14 (App Router) + Tailwind CSS + shadcn/ui primitives + Framer Motion, served from `web/` (dev `npm run dev -- --port 3000`, prod `npm run build && npm run start`). All data comes from the FastAPI backend (§4.13); the UI never shells renderers directly.
+- **Aesthetic tokens (normative):** frosted layers `backdrop-blur-xl bg-slate-900/60 border border-white/10 shadow-2xl`; floating pill controls (`rounded-full`); ambient neon accent YGT `#A3E635` (glows, active states, progress); spring physics `stiffness: 300, damping: 30` on cards/modals; Bento box widget grids (`grid-cols-12`, 8px radius scale).
+- **60 FPS rule:** gallery + preview images ship as low-res WebP thumbnails first (`/_next/image` + `loading="lazy"`), full PNG/MP4 only on viewport intersect / click-to-play; list virtualization beyond 50 cards.
+- **Layout components (`web/components/`):**
+  1. `CampaignStudio` — prompt textarea, brand select (`/api/brands`), platform switches FB/IG/All, preset picker (Hormozi, Docu, B-Roll + kinetic-bold), seed + formats; POSTs `/api/campaigns` and polls `/api/jobs/{id}`.
+  2. `InteractivePreviewGallery` — Bento grid of live Jinja2 HTML cards (iframe sandbox) + Remotion `<video>` player with subtitle/BGM sync readout from `words.json` sidecar.
+  3. `FeatureTogglePanel` — categorized switches mirroring `config/features.json`: Default Processing Engines (Kokoro TTS / Whisper STT status badges, read-mostly), Graphics APIs (Pexels, Pixabay, Openverse toggles), Audio APIs (Freesound SFX, Pixabay Audio toggles). Writes go to `/api/features`.
+  4. `TemplateInspectorModal` — per-template live preview hydrating badge placeholders (`[Headline Here]`, `[Hook Here]`, `[CTA Here]`, `[Bullet 1..n]`, `[Image Here]`) via `/api/templates/{name}/preview`; shows required/optional schema table.
+
+### 4.13 M6 Performance Engine (Intel i5 11th Gen + 20GB RAM)
+
+**Constraint (normative):** the reference box renders Playwright + Remotion with browser tabs open; the web layer MUST NOT throttle it.
+
+- **Decoupled async topology:** FastAPI (port **8000**, `src/pulsecraft/web/`) owns compute; Next.js (port **3000**, `web/`) owns glass. Browser talks only to Next.js route handlers, which proxy to `http://localhost:8000`. No renderer ever runs in the Node process.
+- **`BackgroundJobQueue` (`src/pulsecraft/web/queue.py`), Max Concurrency = 1:** single-worker FIFO (`asyncio.Lock` + `asyncio.Queue`); `enqueue()` returns `job_id` immediately; the worker runs one `CampaignPipeline.run()` (or static/reel render) at a time and records `{status: queued|running|done|failed, timings_ms, artifacts}`. A second submit waits — never parallel-renders on i5.
+- **Low-res WebP asset proxies:** `/api/assets/thumb?path=...` returns Pillow-downscaled WebP (`max 480px`, `quality 60`) with `Cache-Control: public, max-age=86400`; gallery scrolls thumbnails, full assets load on demand.
+- **`gc.collect()` memory release:** after every render/campaign task the worker (in `finally`) calls `gc.collect()` plus `torch.cuda.empty_cache()` guarded by try/except (PyTorch/Whisper caches purged even on failure); peak RSS logged per job for NFR-1 audit.
+- **REST surface (`src/pulsecraft/web/app.py`):** `GET /api/health`, `GET /api/brands`, `GET /api/templates`, `GET /api/templates/{name}/preview`, `GET /api/features` + `PATCH /api/features`, `GET /api/assets`, `POST /api/campaigns` → `{job_id}`, `GET /api/jobs/{id}`, `GET /api/assets/thumb`. All endpoints wrap CLI/pipeline calls (thin-wrapper rule); validation via Pydantic; CORS open for `localhost:3000` only.
+
+### 4.14 M6 Categorized Feature Toggles UI Contract
+
+`config/features.json` (`features/v1`) stays the single source of truth; the UI groups it for humans:
+
+| Category | Toggles | Widget |
+|----------|---------|--------|
+| Default Processing Engines | `tts.kokoro`, `stt.whisper` (+ `tts.edgeFallback` badge) | status badges (Connected/Failed/Unknown), switches disabled when provider key missing |
+| Graphics APIs | `media.pexels`, `media.pixabay`, `media.openverse`, `media.localOverrides` | switches; off → blueprint visual asks ignored with warning (§4.6) |
+| Audio APIs | `audio.sfx`, `audio.bgm`, `audio.ducking` | switches; off → SFX/BGM skipped, VO stays full volume |
+
+`PATCH /api/features {path, enabled}` validates dotted paths via `FeatureFlags.set()` and persists; unknown paths → 422 with precise error.
+
 ---
 
 ## 5. Testing Strategy (TDD Framework)

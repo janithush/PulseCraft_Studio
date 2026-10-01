@@ -115,7 +115,20 @@ Milestones are **acceptance-gated**: a milestone is done only when all mapped ep
 
 **Exit demo (release gate):** live prompt → `output/<run-id>/{blueprints,assets,PNGs,MP4s,meta,manifest,ATTRIBUTION}` + CI badge green + runbook followed verbatim.
 
-**Roadmap summary:** `M0 (week 1, unblocks all) → M1 + M2 (parallel after M0) → M3 (needs M1) → M4 (needs M2/M3) → M5 (needs all)`. M1/M2 can run in parallel; M4 integrates M2+M3 outputs.
+### M6: Liquid Glass Web UI + Hardware-Optimized Worker Queue
+
+**Objective:** Glass dashboard over the M5 engine that stays smooth on Intel i5 11th Gen + 20GB RAM.
+**Maps to:** All Epics · PRD NFR-1/NFR-2 · ARCH §4.12–§4.14.
+
+| # | Deliverable | Done when |
+|---|-------------|-----------|
+| M6.1 | FastAPI server (`src/pulsecraft/web/`: `app.py` REST wrapping CLI/pipeline, `queue.py` `BackgroundJobQueue` max-concurrency 1, `memory.py` `gc.collect()` release hook, `thumbs.py` WebP proxy) on port 8000 | `GET /api/health` green; two rapid `POST /api/campaigns` serialize (never parallel); `gc.collect()` asserted after each job in `tests/unit/test_web_api.py` |
+| M6.2 | Next.js 14 Liquid Glass UI (`web/`: Tailwind + shadcn/ui + Framer Motion `stiffness 300/damping 30`, `#A3E635` glow, `backdrop-blur-xl bg-slate-900/60 border-white/10`) with `CampaignStudio`, `InteractivePreviewGallery` (lazy WebP), `FeatureTogglePanel` (3 categories), `TemplateInspectorModal` (`[Headline Here]`/`[Hook Here]` badges) | `npm run build` clean; gallery scrolls thumbnails before full assets |
+| M6.3 | QA: `tests/unit/test_web_api.py` (health, features get/patch, templates, campaign enqueue + job poll, thumb proxy, concurrency-1 proof, gc hook) + `ruff check` + `pytest` 100% backend pass | New tests green offline with mocked pipeline |
+
+**Exit demo:** `uvicorn` :8000 + `npm run dev` :3000 → prompt in CampaignStudio → job completes → glass gallery shows PNGs/MP4 + toggles flip live.
+
+**Roadmap summary:** `M0 (week 1, unblocks all) → M1 + M2 (parallel after M0) → M3 (needs M1) → M4 (needs M2/M3) → M5 (needs all) → M6 (needs M5)`. M1/M2 can run in parallel; M4 integrates M2+M3 outputs.
 
 ---
 
