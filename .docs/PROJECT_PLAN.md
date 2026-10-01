@@ -104,15 +104,16 @@ Milestones are **acceptance-gated**: a milestone is done only when all mapped ep
 ### M5: End-to-End CLI Integration, Quality Assurance, and Final Polish
 
 **Objective:** One-command prompt→outputs, hardened and documented.
-**Maps to:** All Epics · PRD NFR-1…NFR-4, App. C M5 · ARCH §5, §6, App. A.
+**Maps to:** All Epics · PRD NFR-1…NFR-4, App. C M5 · ARCH §4.10–§4.11, §5, §6, App. A.
 
 | # | Deliverable | Done when |
 |---|-------------|-----------|
-| M5.1 | `pulsecraft generate --brand X --prompt ... --formats png,reel` (orchestrates M1→M4 + `run-manifest.json` + per-stage timings + `--seed` determinism + `--jobs` static parallelism) | Same seed → byte-comparable blueprint; visually stable renders |
+| M5.1 | `pulsecraft generate campaign --prompt ... --brand X --formats png,reel --preset ... --platform all --seed N --out output` (`src/pulsecraft/pipeline/orchestrator.py` `CampaignPipeline`: M1 LLM expand → M4 asset resolve + cache → M2 static 4-layer render → M3 reel TTS/timestamp/ducking/preset render → `output/<run-id>/` bundle + `run-manifest.json` + timings + `--seed` determinism) | Same seed → byte-comparable blueprints; `output/<run-id>/` contains blueprints + assets.json + PNGs + MP4s + manifests with zero manual steps (mocked renderers in CI) |
 | M5.2 | QA hardening: contrast <4.5:1 warnings, SRT sidecar + burned-in captions, actionable errors ("Pexels 429 → fallback; retry --refresh-assets"), temp cleanup | E2E on ref hw meets NFR-2 (static <60s warm E2E; 30s Reel 1–3 min) without freeze/OOM |
 | M5.3 | Docs/runbook (`README` quickstart, brand onboarding <30 min guide, `--fast-draft` iteration guide, model-download sizes) + CI green + coverage gates | New hire onboards a brand and ships PNGs+MP4 in <30 min following runbook only |
+| M5.4 | Unified CLI GA (`generate campaign`, `models status`, `render post|reel`, `templates list|inspect|validate`, `assets list|clear-cache`) + `tests/unit/test_campaign_pipeline.py` + `tests/integration/test_e2e_campaign.py` (mocked collaborators, offline green) | `pulsecraft --help` lists all five groups; new tests green offline |
 
-**Exit demo (release gate):** live prompt → `out/<run-id>/{square,vertical,reel,meta,manifest,ATTRIBUTION}` + CI badge green + runbook followed verbatim.
+**Exit demo (release gate):** live prompt → `output/<run-id>/{blueprints,assets,PNGs,MP4s,meta,manifest,ATTRIBUTION}` + CI badge green + runbook followed verbatim.
 
 **Roadmap summary:** `M0 (week 1, unblocks all) → M1 + M2 (parallel after M0) → M3 (needs M1) → M4 (needs M2/M3) → M5 (needs all)`. M1/M2 can run in parallel; M4 integrates M2+M3 outputs.
 

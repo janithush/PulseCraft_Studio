@@ -510,6 +510,36 @@ Preset components are size-parametric (`width`/`height` props); caption safe-are
     - Plus M2 checks: `index.html`/`style.css` presence (posts) or `ReelComposition.tsx`/`theme.ts` presence (reels), offline-safety (no `https?://`), placeholder declared-vs-used warnings. Clean pack → `[]`; failures are precise (`"<name>: meta.json invalid: 'layoutId' is required"`).
   - **CLI:** `pulsecraft templates validate` prints per-template PASS/FAIL + warnings and exits nonzero iff any manifest fails strict validation.
 
+### 4.10 M5 End-to-End Campaign Orchestrator (`src/pulsecraft/pipeline/orchestrator.py`)
+
+**Goal (PRD App. C M5):** one deterministic prompt→outputs run wiring M1→M4 with per-stage timings, resume-friendly artifacts, and a clean output bundle.
+
+- `CampaignPipeline` connects all sub-systems (collaborators injectable for headless tests):
+  1. **LLM expand (M1):** `TaskOrchestrator.execute(COPYWRITING, prompt)` → campaign copy, then `execute(JSON_BLUEPRINT_CONVERSION, copy)` → post/reel JSON blueprints. LLM failure → deterministic offline fallback blueprint (seeded hook/sub/cta + script/scenes) so `generate campaign` never hard-crashes without keys; `model_used` + `fallback_taken` recorded.
+  2. **Asset resolve (M4):** every `assets.query` / `scenes[].assetQuery` / `[Visual: ...]` tag goes through `MediaFetcher.fetch_scene()` (Pexels→Pixabay→Openverse→fallback, local `input/visuals/` override first) backed by `AssetCache` (`.cache/assets/`, hit/miss logged). Results land in `assets.json` + `ATTRIBUTION.md`; failures degrade to bundled fallback with warnings (hard fail only if caller passes `strict=True`).
+  3. **Static render (M2):** `StaticPostRenderer.render_post()` with 4-layer resolution (L1 conditionals/L2 loops → L3 catalog `layout` → L4 `PROMPT_EXPANSION` fallback); emits `square-1080x1080.png`, `vertical-1080x1350.png` + `static-meta.json`.
+  4. **Video render (M3):** `VideoReelRenderer.render_reel()` (Kokoro TTS → Whisper timestamps → BGM/SFX ducking 15%/35% → Remotion preset per `--preset`/`--platform`); emits per-canvas MP4s + `reel-meta.json`. Disabled toggles skip stages with warnings (guardrails §4.6).
+  5. **Bundle:** clean `output/<run-id>/` tree — `{blueprint-post.json, blueprint-reel.json, assets.json, ATTRIBUTION.md, *.png, *.mp4, *-meta.json, run-manifest.json}`. `run-manifest.json` = `{run_id, brand, seed, prompt, models, timings_ms, warnings, artifacts}`; `--seed` makes blueprint bytes deterministic.
+- **Failure semantics:** per-stage try/except → warnings + fallback artifacts; full-run failure raises `CampaignError` with actionable hint (`--strict-assets`, `--refresh-assets`, resume path). All paths `pathlib`; all network calls timeout + retry + log.
+
+### 4.11 M5 Unified CLI Architecture
+
+**Rule:** one `pulsecraft` entrypoint; nouns are groups, verbs are commands; every run is reproducible from flags + config.
+
+```bash
+pulsecraft generate campaign --prompt "..." --brand acme --formats png,reel \
+  --preset alex-hormozi --platform all --seed 42 --out output
+pulsecraft models status            # registry + task chains (M1)
+pulsecraft render post --blueprint ... --brand acme --out output/<run-id>
+pulsecraft render reel --blueprint ... --preset ... --platform all
+pulsecraft templates list|inspect|validate
+pulsecraft assets list|clear-cache
+pulsecraft check-models
+```
+
+- `src/pulsecraft/cli.py` — `main` group + `generate` group (`campaign` command builds `CampaignRequest` from flags and runs `CampaignPipeline().run()`); `models`, `render`, `templates`, `assets` groups unchanged from M1–M4. `--formats png|reel|both` selects static/video/both; `--seed` seeds fallback blueprints; `--strict-assets` re-escalates asset fallback to hard fail.
+- `src/pulsecraft/pipeline/` owns orchestration; `cli.py` owns parsing/echo only (thin-wrapper rule, enforced by review).
+
 ---
 
 ## 5. Testing Strategy (TDD Framework)

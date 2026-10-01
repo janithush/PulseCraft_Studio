@@ -1,9 +1,4 @@
-"""PulseCraft Studio CLI entrypoint (M2: + render post / templates; M3-M5 extend).
-
-Note: the M2 brief names `src/pulsecraft/cli/main.py`, but the shipped entry point
-(`pulsecraft.cli:main`, used by M1 commands + tests) stays at `src/pulsecraft/cli.py`
-to avoid breaking imports. A `cli/` package split is deferred to M5 if needed.
-"""
+"""PulseCraft Studio CLI entrypoint (M5: unified generate/render/templates/assets)."""
 
 import click
 
@@ -11,6 +6,54 @@ import click
 @click.group()
 def main() -> None:
     """PulseCraft Studio — prompt to FB/IG PNG + Reels."""
+
+
+@main.group(name="generate")
+def generate_group() -> None:
+    """End-to-end campaign generation (LLM → assets → renders → bundle)."""
+
+
+@generate_group.command(name="campaign")
+@click.option("--prompt", required=True, help="Campaign topic/prompt text.")
+@click.option("--brand", default="acme", show_default=True)
+@click.option("--formats", default="png,reel", show_default=True, help="png, reel, or png,reel.")
+@click.option("--preset", default="alex-hormozi", show_default=True)
+@click.option("--platform", default="all", show_default=True, help="fb|ig|all.")
+@click.option("--seed", default=42, show_default=True, type=int)
+@click.option("--out", default="output", show_default=True, help="Output bundle root.")
+@click.option("--strict-assets", is_flag=True, default=False, help="Hard-fail on asset fallback.")
+def generate_campaign(
+    prompt: str,
+    brand: str,
+    formats: str,
+    preset: str,
+    platform: str,
+    seed: int,
+    out: str,
+    strict_assets: bool,
+) -> None:
+    """Run the full M1→M4 campaign pipeline into `output/<run-id>/`."""
+    from pulsecraft.pipeline.orchestrator import CampaignError, CampaignPipeline, CampaignRequest
+
+    request = CampaignRequest(
+        prompt=prompt,
+        brand=brand,
+        formats=formats,
+        preset=preset,
+        platform=platform,
+        seed=seed,
+        out_dir=out,
+        strict_assets=strict_assets,
+    )
+    try:
+        result = CampaignPipeline().run(request)
+    except CampaignError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"run: {result.run_dir}")
+    for key in sorted(result.artifacts):
+        click.echo(f"{key}: {result.artifacts[key]}")
+    for warning in result.warnings:
+        click.echo(f"warning: {warning}")
 
 
 @main.command(name="check-models")
