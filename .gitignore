@@ -12,3 +12,10 @@ out/
 # OS
 .DS_Store
 Thumbs.db
+# Python build &amp; metadata artifacts
+*.egg-info/
+.eggs/
+build/
+dist/
+_pycache_/
+*.pyc
