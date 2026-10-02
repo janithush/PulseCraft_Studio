@@ -1,9 +1,59 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useRef, useState, type ClipboardEvent, type FocusEvent } from "react";
 import { motion } from "framer-motion";
 import { galleryKind, getJob, renderResource } from "../lib/api";
 import type { GalleryItem } from "./InteractivePreviewGallery";
+
+/** Normalize common paste artifacts so JSON.parse has a fair chance. */
+export function sanitizeJsonText(raw: string): string {
+  let out = raw.replace(/^\ufeff/, "").replace(/[\u200b-\u200d\ufeff]/g, "");
+  out = out.replace(/[\u201c\u201d\u201e\u00ab\u00bb]/g, '"').replace(/[\u2018\u2019\u201a\u2032]/g, "'");
+  const fenced = out.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced) out = fenced[1];
+  out = out.replace(/,(\s*[}\]])/g, "$1");
+  return out.trim();
+}
+
+function lineColOf(text: string, pos: number): string {
+  const upto = text.slice(0, Math.max(0, pos));
+  const line = upto.split("\n").length;
+  const col = pos - (upto.lastIndexOf("\n") + 1) + 1;
+  return `line ${line}, column ${col}`;
+}
+
+export function friendlyJsonError(err: unknown, text?: string): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  const at = msg.match(/at position (\d+)/);
+  const where = at && text !== undefined ? ` (${lineColOf(text, Number(at[1]))})` : "";
+  if (/control character/i.test(msg)) {
+    return `Bad control character (raw newline/tab inside a string)${where}. Put text on one line with \\n escapes.`;
+  }
+  if (/escaped character/i.test(msg)) {
+    return `Bad escaped character${where}. Single backslashes (e.g. D:\\path) must be written as \\\\ .`;
+  }
+  if (/property name|Unexpected token/i.test(msg)) {
+    return `Invalid JSON syntax${where}. Check quotes, commas, and brackets.`;
+  }
+  return `JSON parse error${where}: ${msg}`;
+}
+
+/** Strict parse first, sanitized parse as fallback (paste artifacts). */
+export function parseBlueprintText(text: string): Record<string, unknown> {
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return JSON.parse(sanitizeJsonText(text)) as Record<string, unknown>;
+  }
+}
+
+export function tryPrettyJson(raw: string): { ok: true; text: string } | { ok: false; message: string } {
+  try {
+    return { ok: true, text: JSON.stringify(parseBlueprintText(raw), null, 2) };
+  } catch (err) {
+    return { ok: false, message: friendlyJsonError(err, raw) };
+  }
+}
 
 const POST_BLUEPRINT = {
   version: "blueprint/v1",
@@ -44,10 +94,86 @@ export default function ResourcePlayground({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [fallback, setFallback] = useState("");
+  const [copied, setCopied] = useState(false);
+  const areaRef = useRef<HTMLTextAreaElement>(null);
+
+  const validation = useMemo(() => {
+    if (!text.trim()) return { valid: false, message: "Empty input: paste a blueprint JSON object." };
+    try {
+      parseBlueprintText(text);
+      return { valid: true, message: "Valid JSON" };
+    } catch (err) {
+      return { valid: false, message: friendlyJsonError(err, text) };
+    }
+  }, [text]);
+
+  function insertAtCursor(insert: string) {
+    const el = areaRef.current;
+    if (!el) {
+      setText((prev) => prev + insert);
+      return;
+    }
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? el.value.length;
+    const next = el.value.slice(0, start) + insert + el.value.slice(end);
+    setText(next);
+    const caret = start + insert.length;
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(caret, caret);
+    });
+  }
+
+  function handlePaste(e: ClipboardEvent<HTMLTextAreaElement>) {
+    const raw = e.clipboardData.getData("text");
+    if (!raw) return;
+    e.preventDefault();
+    setError("");
+    const pretty = tryPrettyJson(raw);
+    // Standalone JSON pastes go in pretty-printed; anything else is
+    // inserted verbatim at the caret (validation hint explains the issue).
+    insertAtCursor(pretty.ok ? pretty.text : raw);
+  }
+
+  function handleBlur(e: FocusEvent<HTMLTextAreaElement>) {
+    const pretty = tryPrettyJson(e.target.value);
+    if (pretty.ok && pretty.text !== e.target.value) setText(pretty.text);
+  }
+
+  function formatNow() {
+    const pretty = tryPrettyJson(text);
+    if (pretty.ok) {
+      setText(pretty.text);
+      setError("");
+    } else {
+      setError(pretty.message);
+    }
+  }
+
+  async function copyNow() {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  function resetNow() {
+    setError("");
+    setText(JSON.stringify(kind === "render-post" ? POST_BLUEPRINT : REEL_BLUEPRINT, null, 2));
+  }
 
   function switchKind(next: "render-post" | "render-reel") {
     setKind(next);
     setFallback("");
+    setError("");
     setText(JSON.stringify(next === "render-post" ? POST_BLUEPRINT : REEL_BLUEPRINT, null, 2));
   }
 
@@ -56,7 +182,7 @@ export default function ResourcePlayground({
     // Strict append mode: parent appends on a new line, never overwrites.
     const snippet = (() => {
       try {
-        const data = JSON.parse(text) as Record<string, unknown>;
+        const data = parseBlueprintText(text);
         const copy = data.copy as Record<string, string> | undefined;
         if (copy?.hook) return String(copy.hook);
         if (typeof data.hook === "string") return data.hook as string;
@@ -73,7 +199,12 @@ export default function ResourcePlayground({
     setError("");
     setFallback("");
     try {
-      const blueprint = JSON.parse(text) as Record<string, unknown>;
+      let blueprint: Record<string, unknown>;
+      try {
+        blueprint = parseBlueprintText(text);
+      } catch (err) {
+        throw new Error(friendlyJsonError(err, text));
+      }
       const { job_id } = await renderResource("", {
         kind,
         blueprint,
@@ -152,13 +283,46 @@ export default function ResourcePlayground({
         ))}
       </div>
       <textarea
+        ref={areaRef}
         value={text}
         onChange={(e) => setText(e.target.value)}
+        onPaste={handlePaste}
+        onBlur={handleBlur}
         rows={10}
         spellCheck={false}
         data-testid="playground-prompt"
         className="mt-3 w-full rounded-2xl bg-black/40 border border-white/10 p-4 font-mono text-xs text-slate-200"
       />
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <p
+          data-testid="playground-json-status"
+          className={`text-xs ${validation.valid ? "text-[#A3E635]" : "text-red-400"}`}
+        >
+          {validation.valid ? "✓ Valid JSON" : `✗ ${validation.message}`}
+        </p>
+        <span className="flex-1" />
+        <button
+          onClick={formatNow}
+          data-testid="playground-format"
+          className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300"
+        >
+          Format
+        </button>
+        <button
+          onClick={copyNow}
+          data-testid="playground-copy"
+          className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300"
+        >
+          {copied ? "Copied ✓" : "Copy"}
+        </button>
+        <button
+          onClick={resetNow}
+          data-testid="playground-reset"
+          className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300"
+        >
+          Reset
+        </button>
+      </div>
       <div className="mt-3 flex flex-wrap gap-2">
         <button
           onClick={submit}
